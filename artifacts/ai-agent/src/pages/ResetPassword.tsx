@@ -44,13 +44,11 @@ export default function ResetPassword() {
       { data: { token, password: data.password } },
       {
         onSuccess: () => {
-          toast({ title: "Password updated", description: "You can now log in with your new password." });
+          toast.success("Password updated", { description: "You can now log in with your new password." });
           setLocation("/login");
         },
         onError: (err) => {
-          toast({
-            variant: "destructive",
-            title: "Failed",
+          toast.error("Failed", {
             description: (err as { data?: { error?: string } }).data?.error || "An error occurred.",
           });
         },

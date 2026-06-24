@@ -82,12 +82,12 @@ function AIProvidersTab() {
       { data: { slug: data.slug, name: data.name, api_key: data.api_key || undefined, base_url: data.base_url || undefined, default_model: data.default_model || undefined } },
       {
         onSuccess: () => {
-          toast({ title: "Provider added" });
+          toast.success("Provider added");
           addForm.reset();
           setShowAdd(false);
           invalidate();
         },
-        onError: () => toast({ variant: "destructive", title: "Failed to add provider" }),
+        onError: () => toast.error("Failed to add provider"),
       }
     );
   };
@@ -97,10 +97,10 @@ function AIProvidersTab() {
       { providerId: id },
       {
         onSuccess: () => {
-          toast({ title: `${name} is now active` });
+          toast.success(`${name} is now active`);
           invalidate();
         },
-        onError: () => toast({ variant: "destructive", title: "Failed to activate" }),
+        onError: () => toast.error("Failed to activate"),
       }
     );
   };
@@ -110,10 +110,10 @@ function AIProvidersTab() {
       { providerId: id },
       {
         onSuccess: () => {
-          toast({ title: "Provider removed" });
+          toast.success("Provider removed");
           invalidate();
         },
-        onError: () => toast({ variant: "destructive", title: "Failed to delete" }),
+        onError: () => toast.error("Failed to delete"),
       }
     );
   };
@@ -330,8 +330,8 @@ export default function Settings() {
     updateMeMutation.mutate(
       { data },
       {
-        onSuccess: () => toast({ title: "Profile updated" }),
-        onError: (err) => toast({ variant: "destructive", title: "Error", description: (err as { data?: { error?: string } }).data?.error || err.message }),
+        onSuccess: () => toast.success("Profile updated"),
+        onError: (err) => toast.error("Error", { description: (err as { data?: { error?: string } }).data?.error || err.message }),
       }
     );
   };
@@ -341,10 +341,10 @@ export default function Settings() {
       { data },
       {
         onSuccess: () => {
-          toast({ title: "Password changed successfully" });
+          toast.success("Password changed successfully");
           securityForm.reset();
         },
-        onError: (err) => toast({ variant: "destructive", title: "Error", description: (err as { data?: { error?: string } }).data?.error || err.message }),
+        onError: (err) => toast.error("Error", { description: (err as { data?: { error?: string } }).data?.error || err.message }),
       }
     );
   };
