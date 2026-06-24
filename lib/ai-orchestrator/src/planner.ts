@@ -85,8 +85,8 @@ export async function runPlanner(
   userMessage: string,
   history: PlannerMessage[] = [],
 ): Promise<PlannerResult> {
-  const spaceUrl = process.env["HF_SPACE_URL"];
-  const apiKey = process.env["HF_API_KEY"];
+  const spaceUrl = process.env["HF_SPACE_URL"]?.trim();
+  const apiKey = process.env["HF_API_KEY"]?.trim();
 
   if (!spaceUrl) {
     console.warn("[Planner] HF_SPACE_URL is not set — returning configuration guide");
