@@ -31,6 +31,66 @@ const queryClient = new QueryClient({
   },
 });
 
+// ── Stable page components for protected routes ──────────────────────────────
+// All routes MUST use the `component` prop (not children) inside <Switch>.
+// Mixing the two patterns causes Wouter's reconciler to produce an inconsistent
+// React element tree across renders, which triggers React 18's insertBefore
+// DOM crash when switching between routes.
+
+const ChatPage = () => (
+  <ProtectedRoute>
+    <AppLayout>
+      <ChatWorkspace />
+    </AppLayout>
+  </ProtectedRoute>
+);
+
+const DashboardPage = () => (
+  <ProtectedRoute>
+    <AppLayout>
+      <Dashboard />
+    </AppLayout>
+  </ProtectedRoute>
+);
+
+const ProjectsPage = () => (
+  <ProtectedRoute>
+    <AppLayout>
+      <Projects />
+    </AppLayout>
+  </ProtectedRoute>
+);
+
+const ProjectWorkspacePage = () => (
+  <ProtectedRoute>
+    <ProjectWorkspace />
+  </ProtectedRoute>
+);
+
+const SettingsPage = () => (
+  <ProtectedRoute>
+    <AppLayout>
+      <Settings />
+    </AppLayout>
+  </ProtectedRoute>
+);
+
+const NotificationsPage = () => (
+  <ProtectedRoute>
+    <AppLayout>
+      <Notifications />
+    </AppLayout>
+  </ProtectedRoute>
+);
+
+const AdminPage = () => (
+  <ProtectedRoute requireAdmin>
+    <AppLayout>
+      <Admin />
+    </AppLayout>
+  </ProtectedRoute>
+);
+
 function Router() {
   return (
     <Switch>
@@ -39,30 +99,13 @@ function Router() {
       <Route path="/register" component={Register} />
       <Route path="/forgot-password" component={ForgotPassword} />
       <Route path="/reset-password" component={ResetPassword} />
-      
-      {/* Protected Routes */}
-      <Route path="/chat">
-        <ProtectedRoute><AppLayout><ChatWorkspace /></AppLayout></ProtectedRoute>
-      </Route>
-      <Route path="/dashboard">
-        <ProtectedRoute><AppLayout><Dashboard /></AppLayout></ProtectedRoute>
-      </Route>
-      <Route path="/projects">
-        <ProtectedRoute><AppLayout><Projects /></AppLayout></ProtectedRoute>
-      </Route>
-      <Route path="/projects/:id">
-        <ProtectedRoute><ProjectWorkspace /></ProtectedRoute>
-      </Route>
-      <Route path="/settings">
-        <ProtectedRoute><AppLayout><Settings /></AppLayout></ProtectedRoute>
-      </Route>
-      <Route path="/notifications">
-        <ProtectedRoute><AppLayout><Notifications /></AppLayout></ProtectedRoute>
-      </Route>
-      <Route path="/admin">
-        <ProtectedRoute requireAdmin><AppLayout><Admin /></AppLayout></ProtectedRoute>
-      </Route>
-
+      <Route path="/chat" component={ChatPage} />
+      <Route path="/dashboard" component={DashboardPage} />
+      <Route path="/projects" component={ProjectsPage} />
+      <Route path="/projects/:id" component={ProjectWorkspacePage} />
+      <Route path="/settings" component={SettingsPage} />
+      <Route path="/notifications" component={NotificationsPage} />
+      <Route path="/admin" component={AdminPage} />
       <Route component={NotFound} />
     </Switch>
   );
@@ -76,8 +119,8 @@ function App() {
           <TooltipProvider>
             <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
               <Router />
+              <Toaster />
             </WouterRouter>
-            <Toaster />
           </TooltipProvider>
         </AuthProvider>
       </QueryClientProvider>
