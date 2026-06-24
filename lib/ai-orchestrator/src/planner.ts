@@ -229,7 +229,7 @@ async function callOpenRouter(
         "Content-Type": "application/json",
         Authorization: `Bearer ${apiKey}`,
         "HTTP-Referer": "https://ai-agent-platform.replit.app",
-        "X-Title": "AI Agent Platform — Planner",
+        "X-Title": "AI Agent Platform - Planner",
       },
       body: JSON.stringify({
         model,

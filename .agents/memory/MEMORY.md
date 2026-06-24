@@ -5,3 +5,5 @@
 - [TanStack Query v5 queryKey required](tanstack-querykey-required.md) — UseQueryOptions in v5 requires queryKey; pass it or omit the query option entirely when only using enabled/staleTime.
 - [List hooks return arrays not list objects](list-hooks-arrays.md) — getRecentProjects and listMyProviders return T[] directly, not { items: T[] }; only paginated endpoints return NotificationList/etc with .items.
 - [Replit migration setup](replit-migration-setup.md) — pnpm monorepo; frontend on port 5000 (webview), API server on port 8000 (console); Vite proxies /api to localhost:8000; DB schema pushed via `pnpm --filter @workspace/db run push`.
+- [OpenRouter HTTP header ASCII rule](openrouter-header-ascii.md) — HTTP headers must be ASCII-only; em dashes (U+2014) in X-Title crash all requests with ByteString error; use plain hyphens only.
+- [Planner OpenRouter setup](planner-openrouter.md) — planner uses OPENROUTER_API_KEY env var; fallback chain: moonshotai/kimi-k2 → qwen/qwen3-coder → deepseek/deepseek-v3; HuggingFace fully removed.
