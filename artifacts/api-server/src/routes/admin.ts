@@ -76,10 +76,11 @@ router.get("/users", async (req, res) => {
 // ─── GET /admin/users/:userId ─────────────────────────────────────────────────
 
 router.get("/users/:userId", async (req, res) => {
+  const { userId } = req.params as Record<string, string>;
   const [user] = await db
     .select()
     .from(usersTable)
-    .where(eq(usersTable.id, req.params.userId))
+    .where(eq(usersTable.id, userId))
     .limit(1);
 
   if (!user) {
@@ -97,7 +98,7 @@ const adminUpdateUserSchema = z.object({
 });
 
 router.patch("/users/:userId", validateBody(adminUpdateUserSchema), async (req, res) => {
-  const { userId } = req.params;
+  const { userId } = req.params as Record<string, string>;
   const adminId = req.user!.sub;
   const data = req.body as z.infer<typeof adminUpdateUserSchema>;
 
@@ -127,7 +128,7 @@ router.patch("/users/:userId", validateBody(adminUpdateUserSchema), async (req, 
 // ─── POST /admin/users/:userId/deactivate ─────────────────────────────────────
 
 router.post("/users/:userId/deactivate", async (req, res) => {
-  const { userId } = req.params;
+  const { userId } = req.params as Record<string, string>;
   const adminId = req.user!.sub;
 
   if (userId === adminId) {

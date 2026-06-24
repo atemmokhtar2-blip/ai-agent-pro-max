@@ -7,9 +7,10 @@
  */
 
 import { Router } from "express";
+import type { Response } from "express";
 import { z } from "zod";
 import { db, projectFilesTable, projectsTable } from "@workspace/db";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { generateId } from "../../lib/auth.js";
 import { authenticate } from "../../middlewares/authenticate.js";
 import { validateBody } from "../../middlewares/validate.js";
@@ -32,7 +33,7 @@ function fmtFile(f: typeof projectFilesTable.$inferSelect) {
   };
 }
 
-async function assertProjectOwner(projectId: string, userId: string, res: ReturnType<typeof Router>['response'] | any): Promise<boolean> {
+async function assertProjectOwner(projectId: string, userId: string, res: Response): Promise<boolean> {
   const [project] = await db
     .select({ userId: projectsTable.userId })
     .from(projectsTable)
@@ -55,7 +56,7 @@ async function assertProjectOwner(projectId: string, userId: string, res: Return
 // GET /storage/projects/:projectId/files
 router.get("/projects/:projectId/files", async (req, res) => {
   const userId = req.user!.sub;
-  const { projectId } = req.params;
+  const { projectId } = req.params as Record<string, string>;
 
   if (!(await assertProjectOwner(projectId, userId, res))) return;
 
@@ -77,7 +78,7 @@ const createFileSchema = z.object({
 
 router.post("/projects/:projectId/files", validateBody(createFileSchema), async (req, res) => {
   const userId = req.user!.sub;
-  const { projectId } = req.params;
+  const { projectId } = req.params as Record<string, string>;
   const body = req.body as z.infer<typeof createFileSchema>;
 
   if (!(await assertProjectOwner(projectId, userId, res))) return;
@@ -101,7 +102,7 @@ router.post("/projects/:projectId/files", validateBody(createFileSchema), async 
 // GET /storage/projects/:projectId/files/:fileId
 router.get("/projects/:projectId/files/:fileId", async (req, res) => {
   const userId = req.user!.sub;
-  const { projectId, fileId } = req.params;
+  const { projectId, fileId } = req.params as Record<string, string>;
 
   if (!(await assertProjectOwner(projectId, userId, res))) return;
 
@@ -124,7 +125,7 @@ const updateFileSchema = z.object({
 
 router.put("/projects/:projectId/files/:fileId", validateBody(updateFileSchema), async (req, res) => {
   const userId = req.user!.sub;
-  const { projectId, fileId } = req.params;
+  const { projectId, fileId } = req.params as Record<string, string>;
   const body = req.body as z.infer<typeof updateFileSchema>;
 
   if (!(await assertProjectOwner(projectId, userId, res))) return;
@@ -150,7 +151,7 @@ router.put("/projects/:projectId/files/:fileId", validateBody(updateFileSchema),
 // DELETE /storage/projects/:projectId/files/:fileId
 router.delete("/projects/:projectId/files/:fileId", async (req, res) => {
   const userId = req.user!.sub;
-  const { projectId, fileId } = req.params;
+  const { projectId, fileId } = req.params as Record<string, string>;
 
   if (!(await assertProjectOwner(projectId, userId, res))) return;
 

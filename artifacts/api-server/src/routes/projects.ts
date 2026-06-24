@@ -163,7 +163,7 @@ router.get("/recent", async (req, res) => {
 // ─── GET /projects/:projectId ─────────────────────────────────────────────────
 
 router.get("/:projectId", async (req, res) => {
-  const { projectId } = req.params;
+  const { projectId } = req.params as Record<string, string>;
   const userId = req.user!.sub;
 
   const [project] = await db
@@ -189,7 +189,7 @@ const updateProjectSchema = z.object({
 });
 
 router.patch("/:projectId", validateBody(updateProjectSchema), async (req, res) => {
-  const { projectId } = req.params;
+  const { projectId } = req.params as Record<string, string>;
   const userId = req.user!.sub;
   const data = req.body as z.infer<typeof updateProjectSchema>;
 
@@ -218,7 +218,7 @@ router.patch("/:projectId", validateBody(updateProjectSchema), async (req, res) 
 // ─── DELETE /projects/:projectId ──────────────────────────────────────────────
 
 router.delete("/:projectId", async (req, res) => {
-  const { projectId } = req.params;
+  const { projectId } = req.params as Record<string, string>;
   const userId = req.user!.sub;
 
   const [deleted] = await db
@@ -240,7 +240,7 @@ router.delete("/:projectId", async (req, res) => {
 // ─── POST /projects/:projectId/archive ───────────────────────────────────────
 
 router.post("/:projectId/archive", async (req, res) => {
-  const { projectId } = req.params;
+  const { projectId } = req.params as Record<string, string>;
   const userId = req.user!.sub;
 
   const [updated] = await db
@@ -263,7 +263,7 @@ router.post("/:projectId/archive", async (req, res) => {
 // ─── GET /projects/:projectId/members ─────────────────────────────────────────
 
 router.get("/:projectId/members", async (req, res) => {
-  const { projectId } = req.params;
+  const { projectId } = req.params as Record<string, string>;
   const userId = req.user!.sub;
 
   // Verify project belongs to user

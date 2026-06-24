@@ -136,7 +136,7 @@ router.post("/conversations", validateBody(createConversationSchema), async (req
 // GET /ai/conversations/:id
 router.get("/conversations/:id", async (req, res) => {
   const userId = req.user!.sub;
-  const { id } = req.params;
+  const { id } = req.params as Record<string, string>;
 
   const [conversation] = await db
     .select()
@@ -158,7 +158,7 @@ router.get("/conversations/:id", async (req, res) => {
 // DELETE /ai/conversations/:id
 router.delete("/conversations/:id", async (req, res) => {
   const userId = req.user!.sub;
-  const { id } = req.params;
+  const { id } = req.params as Record<string, string>;
 
   const [deleted] = await db
     .delete(aiConversationsTable)
@@ -174,7 +174,7 @@ router.delete("/conversations/:id", async (req, res) => {
 // GET /ai/conversations/:id/messages
 router.get("/conversations/:id/messages", async (req, res) => {
   const userId = req.user!.sub;
-  const { id } = req.params;
+  const { id } = req.params as Record<string, string>;
 
   const [conversation] = await db
     .select()
@@ -201,7 +201,7 @@ const sendMessageSchema = z.object({
 
 router.post("/conversations/:id/messages", validateBody(sendMessageSchema), async (req, res) => {
   const userId = req.user!.sub;
-  const { id } = req.params;
+  const { id } = req.params as Record<string, string>;
   const { content, model } = req.body as z.infer<typeof sendMessageSchema>;
 
   const [conversation] = await db
@@ -372,7 +372,7 @@ const updateProviderSchema = z.object({
 
 router.patch("/providers/:id", validateBody(updateProviderSchema), async (req, res) => {
   const userId = req.user!.sub;
-  const { id } = req.params;
+  const { id } = req.params as Record<string, string>;
   const body = req.body as z.infer<typeof updateProviderSchema>;
 
   const update: Partial<typeof providerConfigsTable.$inferInsert> = {};
@@ -401,7 +401,7 @@ router.patch("/providers/:id", validateBody(updateProviderSchema), async (req, r
 // DELETE /ai/providers/:id
 router.delete("/providers/:id", async (req, res) => {
   const userId = req.user!.sub;
-  const { id } = req.params;
+  const { id } = req.params as Record<string, string>;
 
   const [deleted] = await db
     .delete(providerConfigsTable)
@@ -415,7 +415,7 @@ router.delete("/providers/:id", async (req, res) => {
 // POST /ai/providers/:id/activate
 router.post("/providers/:id/activate", async (req, res) => {
   const userId = req.user!.sub;
-  const { id } = req.params;
+  const { id } = req.params as Record<string, string>;
 
   const [target] = await db
     .select()
@@ -438,7 +438,7 @@ router.post("/providers/:id/activate", async (req, res) => {
 // POST /ai/providers/:id/test
 router.post("/providers/:id/test", async (req, res) => {
   const userId = req.user!.sub;
-  const { id } = req.params;
+  const { id } = req.params as Record<string, string>;
 
   const [row] = await db
     .select()
@@ -463,7 +463,7 @@ router.post("/providers/:id/test", async (req, res) => {
 // GET /ai/providers/:id/models
 router.get("/providers/:id/models", async (req, res) => {
   const userId = req.user!.sub;
-  const { id } = req.params;
+  const { id } = req.params as Record<string, string>;
 
   const [row] = await db
     .select()
