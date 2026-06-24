@@ -6,7 +6,7 @@ import { useForgotPassword } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { Cpu, Loader2 } from "lucide-react";
 
 const forgotSchema = z.object({
@@ -16,8 +16,6 @@ const forgotSchema = z.object({
 type ForgotFormValues = z.infer<typeof forgotSchema>;
 
 export default function ForgotPassword() {
-  const { toast } = useToast();
-  
   const form = useForm<ForgotFormValues>({
     resolver: zodResolver(forgotSchema),
     defaultValues: { email: "" },
@@ -30,13 +28,11 @@ export default function ForgotPassword() {
       { data },
       {
         onSuccess: () => {
-          toast({ title: "Email sent", description: "If an account exists, a reset link has been sent." });
+          toast.success("Email sent", { description: "If an account exists, a reset link has been sent." });
           form.reset();
         },
         onError: (err) => {
-          toast({
-            variant: "destructive",
-            title: "Failed",
+          toast.error("Failed", {
             description: (err as { data?: { error?: string } }).data?.error || "An error occurred.",
           });
         },

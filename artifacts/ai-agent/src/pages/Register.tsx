@@ -7,7 +7,7 @@ import { useAuth } from "@/components/AuthProvider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { Cpu, Loader2 } from "lucide-react";
 
 const registerSchema = z.object({
@@ -21,8 +21,7 @@ type RegisterFormValues = z.infer<typeof registerSchema>;
 export default function Register() {
   const [, setLocation] = useLocation();
   const { login: authenticate } = useAuth();
-  const { toast } = useToast();
-  
+
   const form = useForm<RegisterFormValues>({
     resolver: zodResolver(registerSchema),
     defaultValues: { username: "", email: "", password: "" },
@@ -40,13 +39,11 @@ export default function Register() {
             refresh_token: res.refresh_token,
             token_type: res.token_type
           });
-          toast({ title: "Account created", description: "Welcome to AI Agent." });
+          toast.success("Account created", { description: "Welcome to AI Agent." });
           setLocation("/dashboard");
         },
         onError: (err) => {
-          toast({
-            variant: "destructive",
-            title: "Registration Failed",
+          toast.error("Registration Failed", {
             description: (err as { data?: { error?: string } }).data?.error || "An error occurred.",
           });
         },

@@ -8,7 +8,7 @@ import { useAuth } from "@/components/AuthProvider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { Cpu, Loader2 } from "lucide-react";
 
 const loginSchema = z.object({
@@ -21,8 +21,7 @@ type LoginFormValues = z.infer<typeof loginSchema>;
 export default function Login() {
   const [, setLocation] = useLocation();
   const { login: authenticate } = useAuth();
-  const { toast } = useToast();
-  
+
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: { email: "", password: "" },
@@ -40,13 +39,11 @@ export default function Login() {
             refresh_token: res.refresh_token,
             token_type: res.token_type
           });
-          toast({ title: "Welcome back", description: "Successfully logged in." });
+          toast.success("Welcome back", { description: "Successfully logged in." });
           setTimeout(() => setLocation("/dashboard"), 0);
         },
         onError: (err) => {
-          toast({
-            variant: "destructive",
-            title: "Login Failed",
+          toast.error("Login Failed", {
             description: (err as { data?: { error?: string } }).data?.error || "Please check your credentials and try again.",
           });
         },

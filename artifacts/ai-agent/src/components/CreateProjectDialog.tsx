@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { Loader2, Plus } from "lucide-react";
 
 const createProjectSchema = z.object({
@@ -21,7 +21,6 @@ const createProjectSchema = z.object({
 
 export function CreateProjectDialog() {
   const [open, setOpen] = useState(false);
-  const { toast } = useToast();
   const queryClient = useQueryClient();
   const createMutation = useCreateProject();
 
@@ -40,12 +39,12 @@ export function CreateProjectDialog() {
       {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getListProjectsQueryKey() });
-          toast({ title: "Project created" });
+          toast.success("Project created");
           setOpen(false);
           form.reset();
         },
         onError: (err) => {
-          toast({ variant: "destructive", title: "Error", description: (err as { data?: { error?: string } }).data?.error || err.message });
+          toast.error("Error", { description: (err as { data?: { error?: string } }).data?.error || err.message });
         }
       }
     );

@@ -21,7 +21,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import {
   Loader2,
   Zap,
@@ -56,7 +56,6 @@ const addProviderSchema = z.object({
 // ─── AI Providers Tab ─────────────────────────────────────────────────────────
 
 function AIProvidersTab() {
-  const { toast } = useToast();
   const queryClient = useQueryClient();
   const [showAdd, setShowAdd] = useState(false);
   const [testResults, setTestResults] = useState<Record<string, { ok: boolean; message: string; latencyMs?: number }>>({});
@@ -313,7 +312,6 @@ function AIProvidersTab() {
 export default function Settings() {
   const { user } = useAuth();
   const { theme, setTheme } = useTheme();
-  const { toast } = useToast();
 
   const updateMeMutation = useUpdateMe();
   const changePasswordMutation = useChangePassword();

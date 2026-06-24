@@ -6,7 +6,7 @@ import { useResetPassword } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { Cpu, Loader2 } from "lucide-react";
 import { useEffect } from "react";
 
@@ -18,18 +18,17 @@ type ResetFormValues = z.infer<typeof resetSchema>;
 
 export default function ResetPassword() {
   const [location, setLocation] = useLocation();
-  const { toast } = useToast();
-  
+
   // Extract token from URL search params
   const searchParams = new URLSearchParams(window.location.search);
   const token = searchParams.get("token");
 
   useEffect(() => {
     if (!token) {
-      toast({ variant: "destructive", title: "Invalid Link", description: "No reset token provided." });
+      toast.error("Invalid Link", { description: "No reset token provided." });
       setLocation("/login");
     }
-  }, [token, setLocation, toast]);
+  }, [token, setLocation]);
 
   const form = useForm<ResetFormValues>({
     resolver: zodResolver(resetSchema),

@@ -6,14 +6,13 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { MoreVertical, Edit2, Archive, Trash2, Loader2 } from "lucide-react";
 import type { Project } from "@workspace/api-client-react";
 
 export function ProjectActionsDropdown({ project }: { project: Project }) {
   const [renameOpen, setRenameOpen] = useState(false);
   const [newName, setNewName] = useState(project.name);
-  const { toast } = useToast();
   const queryClient = useQueryClient();
 
   const updateMutation = useUpdateProject();
@@ -28,10 +27,10 @@ export function ProjectActionsDropdown({ project }: { project: Project }) {
       {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getListProjectsQueryKey() });
-          toast({ title: "Project renamed" });
+          toast.success("Project renamed");
           setRenameOpen(false);
         },
-        onError: (err) => toast({ variant: "destructive", title: "Error", description: (err as { data?: { error?: string } }).data?.error || err.message })
+        onError: (err) => toast.error("Error", { description: (err as { data?: { error?: string } }).data?.error || err.message })
       }
     );
   };
@@ -43,9 +42,9 @@ export function ProjectActionsDropdown({ project }: { project: Project }) {
       {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getListProjectsQueryKey() });
-          toast({ title: "Project archived" });
+          toast.success("Project archived");
         },
-        onError: (err) => toast({ variant: "destructive", title: "Error", description: (err as { data?: { error?: string } }).data?.error || err.message })
+        onError: (err) => toast.error("Error", { description: (err as { data?: { error?: string } }).data?.error || err.message })
       }
     );
   };
@@ -57,9 +56,9 @@ export function ProjectActionsDropdown({ project }: { project: Project }) {
       {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getListProjectsQueryKey() });
-          toast({ title: "Project deleted" });
+          toast.success("Project deleted");
         },
-        onError: (err) => toast({ variant: "destructive", title: "Error", description: (err as { data?: { error?: string } }).data?.error || err.message })
+        onError: (err) => toast.error("Error", { description: (err as { data?: { error?: string } }).data?.error || err.message })
       }
     );
   };
