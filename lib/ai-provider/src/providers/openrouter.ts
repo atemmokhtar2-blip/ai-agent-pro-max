@@ -28,6 +28,51 @@ const DEFAULT_FREE_MODELS: ModelInfo[] = [
   { id: "qwen/qwen3-8b:free", name: "Qwen 3 8B (Free)", isFree: true },
 ];
 
+// ── Header diagnostics ────────────────────────────────────────────────────────
+
+function dumpFetchDiagnostics(
+  callsite: string,
+  headers: Record<string, string>,
+  extras: Record<string, unknown> = {},
+): void {
+  console.log(`[OpenRouter][${callsite}] === PRE-FETCH DIAGNOSTICS ===`);
+
+  // Dump every header key + value with per-character codes
+  console.log(`[OpenRouter][${callsite}] Headers (${Object.keys(headers).length} total):`);
+  for (const [key, value] of Object.entries(headers)) {
+    const codes = Array.from(value).map((c) => c.charCodeAt(0));
+    const nonAscii = codes.filter((c) => c > 127);
+    const flagged = codes.filter((c) => c > 255);
+    console.log(`  KEY   "${key}" (len=${key.length}) codes=[${Array.from(key).map((c) => c.charCodeAt(0)).join(",")}]`);
+    console.log(`  VALUE "${value.slice(0, 100)}" (len=${value.length}) codes=[${codes.join(",")}]`);
+    if (nonAscii.length > 0) {
+      console.log(`  *** WARN: non-ASCII codepoints in VALUE: [${nonAscii.join(",")}]`);
+    }
+    if (flagged.length > 0) {
+      console.log(`  *** ERROR: non-ByteString codepoints in VALUE: [${flagged.join(",")}]`);
+      for (let i = 0; i < value.length; i++) {
+        const code = value.charCodeAt(i);
+        if (code > 255) {
+          console.log(`    -> index=${i} char="${value[i]}" codepoint=${code} (U+${code.toString(16).toUpperCase().padStart(4, "0")})`);
+        }
+      }
+    }
+  }
+
+  // Dump extra metadata fields
+  if (Object.keys(extras).length > 0) {
+    console.log(`[OpenRouter][${callsite}] Extra fields:`);
+    for (const [k, v] of Object.entries(extras)) {
+      const s = String(v);
+      const codes = Array.from(s).map((c) => c.charCodeAt(0));
+      const flagged = codes.filter((c) => c > 255);
+      console.log(`  ${k}="${s.slice(0, 100)}" len=${s.length} codes=[${codes.join(",")}]${flagged.length > 0 ? " *** HAS NON-BYTESTRING" : ""}`);
+    }
+  }
+
+  console.log(`[OpenRouter][${callsite}] === END DIAGNOSTICS ===`);
+}
+
 export class OpenRouterProvider extends BaseProvider {
   readonly slug = "openrouter";
   readonly name = "OpenRouter";
@@ -48,12 +93,21 @@ export class OpenRouterProvider extends BaseProvider {
     const model = this.resolveModel(request, config);
     const messages = this.buildMessages(request);
 
+    const chatHeaders = this.buildHeaders(config.apiKey, {
+      "HTTP-Referer": "https://ai-agent-platform.replit.app",
+      "X-Title": "AI Agent Platform",
+    });
+    dumpFetchDiagnostics("chat", chatHeaders, {
+      baseUrl,
+      model,
+      "config.apiKey_length": config.apiKey?.length ?? 0,
+      "config.defaultModel": config.defaultModel ?? "(none)",
+      "config.baseUrl": config.baseUrl ?? "(none)",
+    });
+
     const response = await fetch(`${baseUrl}/chat/completions`, {
       method: "POST",
-      headers: this.buildHeaders(config.apiKey, {
-        "HTTP-Referer": "https://ai-agent-platform.replit.app",
-        "X-Title": "AI Agent Platform",
-      }),
+      headers: chatHeaders,
       body: JSON.stringify({
         model,
         messages,
@@ -91,12 +145,21 @@ export class OpenRouterProvider extends BaseProvider {
     const model = this.resolveModel(request, config);
     const messages = this.buildMessages(request);
 
+    const streamHeaders = this.buildHeaders(config.apiKey, {
+      "HTTP-Referer": "https://ai-agent-platform.replit.app",
+      "X-Title": "AI Agent Platform",
+    });
+    dumpFetchDiagnostics("chatStream", streamHeaders, {
+      baseUrl,
+      model,
+      "config.apiKey_length": config.apiKey?.length ?? 0,
+      "config.defaultModel": config.defaultModel ?? "(none)",
+      "config.baseUrl": config.baseUrl ?? "(none)",
+    });
+
     const response = await fetch(`${baseUrl}/chat/completions`, {
       method: "POST",
-      headers: this.buildHeaders(config.apiKey, {
-        "HTTP-Referer": "https://ai-agent-platform.replit.app",
-        "X-Title": "AI Agent Platform",
-      }),
+      headers: streamHeaders,
       body: JSON.stringify({
         model,
         messages,

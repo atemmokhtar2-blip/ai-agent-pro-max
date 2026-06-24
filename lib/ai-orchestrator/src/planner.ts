@@ -217,11 +217,32 @@ function classifyError(err: unknown, status?: number): ClassifiedError {
  * Throws a descriptive error if any non-compliant character is found.
  */
 function assertAsciiHeaders(headers: Record<string, string>): void {
-  console.log("[Planner] Headers validated");
+  console.log("[Planner] === PRE-FETCH HEADER DIAGNOSTICS ===");
+  console.log(`[Planner] Inspecting ${Object.keys(headers).length} headers`);
+
   for (const [name, value] of Object.entries(headers)) {
+    const keyCodes = Array.from(name).map((c) => c.charCodeAt(0));
+    const valCodes = Array.from(value).map((c) => c.charCodeAt(0));
+    const nonBytestringKey = keyCodes.filter((c) => c > 255);
+    const nonBytestringVal = valCodes.filter((c) => c > 255);
+
+    console.log(`[Planner] HEADER KEY   "${name}" len=${name.length} codes=[${keyCodes.join(",")}]`);
+    console.log(`[Planner] HEADER VALUE "${value.slice(0, 100)}" len=${value.length} codes=[${valCodes.join(",")}]`);
+
+    if (nonBytestringKey.length > 0) {
+      console.log(`[Planner] *** KEY HAS NON-BYTESTRING: [${nonBytestringKey.join(",")}]`);
+    }
+    if (nonBytestringVal.length > 0) {
+      console.log(`[Planner] *** VALUE HAS NON-BYTESTRING: [${nonBytestringVal.join(",")}]`);
+    }
+
     for (let i = 0; i < value.length; i++) {
       const code = value.charCodeAt(i);
       if (code > 255) {
+        console.log(
+          `[Planner] *** FOUND codepoint=${code} (U+${code.toString(16).toUpperCase().padStart(4, "0")}) ` +
+            `at index=${i} char="${value[i]}" in header "${name}"`,
+        );
         throw new Error(
           `Header "${name}" contains non-ByteString character at index ${i}: ` +
             `U+${code.toString(16).toUpperCase().padStart(4, "0")} ("${value[i]}"). ` +
@@ -230,7 +251,10 @@ function assertAsciiHeaders(headers: Record<string, string>): void {
       }
     }
   }
+
+  console.log("[Planner] Headers validated");
   console.log("[Planner] ASCII validation passed");
+  console.log("[Planner] === END HEADER DIAGNOSTICS ===");
 }
 
 // ── Single model call ─────────────────────────────────────────────────────────
