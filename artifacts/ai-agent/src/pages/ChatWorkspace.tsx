@@ -271,7 +271,7 @@ export default function ChatWorkspace() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [activeConv?.messages, sendMutation.isPending, scrollToBottom]);
+  }, [activeConv?.messages, plannerMutation.isPending, scrollToBottom]);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 
