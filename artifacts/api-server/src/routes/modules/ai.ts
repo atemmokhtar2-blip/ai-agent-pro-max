@@ -472,6 +472,9 @@ router.post("/planner/stream", validateBody(plannerSchema), async (req, res) => 
     let finalModel = "";
     let isConversation = false;
 
+    console.log("[DIAG] STEP 1 - Request received", { message: message.slice(0, 80), conversationId });
+    console.log("[DIAG] STEP 2 - Planner started");
+
     await runPlannerStream(
       message,
       historyForPlanner,
@@ -491,6 +494,8 @@ router.post("/planner/stream", validateBody(plannerSchema), async (req, res) => 
     );
 
     if (aborted) return;
+
+    console.log("[DIAG] STEP 6 - Planner completed", { finalContent: finalContent.slice(0, 80), isConversation });
 
     // ── Persist assistant reply ─────────────────────────────────────────────
     if (finalContent) {
@@ -536,6 +541,7 @@ router.post("/planner/stream", validateBody(plannerSchema), async (req, res) => 
       }
     }
 
+    console.log("[DIAG] STEP 7 - UI response returned");
     if (!res.writableEnded) {
       res.write("data: [DONE]\n\n");
       res.end();

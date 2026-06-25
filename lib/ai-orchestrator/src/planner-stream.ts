@@ -197,6 +197,7 @@ async function callOpenRouterStream(
   onChunk: (text: string) => void,
   signal: AbortSignal,
 ): Promise<StreamCallResult> {
+  console.log(`[DIAG] STEP 3 - OpenRouter request sent`, { model, url: OPENROUTER_URL, messages: messages.length });
   const response = await fetch(OPENROUTER_URL, {
     method: "POST",
     headers: {
@@ -214,8 +215,11 @@ async function callOpenRouterStream(
     signal,
   });
 
+  console.log(`[DIAG] STEP 4 - OpenRouter response received`, { status: response.status, ok: response.ok });
+
   if (!response.ok) {
     const body = await response.text().catch(() => "");
+    console.error(`[DIAG] STEP 4 FAILED - OpenRouter error body: ${body.slice(0, 300)}`);
     const err = new Error(`OpenRouter ${response.status}: ${body.slice(0, 200)}`);
     (err as Error & { status: number }).status = response.status;
     throw err;
@@ -264,6 +268,7 @@ async function callOpenRouterStream(
     reader.releaseLock();
   }
 
+  console.log(`[DIAG] STEP 5 - Response parsed`, { contentLength: fullContent.length, model: resolvedModel });
   return { content: fullContent, model: resolvedModel };
 }
 
