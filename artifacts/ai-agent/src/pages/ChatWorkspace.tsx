@@ -22,6 +22,7 @@ import {
   Pencil,
   Check,
   X,
+  Copy,
   MessageSquare,
   Loader2,
   Paperclip,
@@ -46,6 +47,26 @@ function autoTitle(content: string) {
 
 function MessageBubble({ message }: { message: AIMessage }) {
   const isUser = message.role === "user";
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(() => {
+    navigator.clipboard.writeText(message.content).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }).catch(() => {
+      const el = document.createElement("textarea");
+      el.value = message.content;
+      el.style.position = "fixed";
+      el.style.left = "-9999px";
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand("copy");
+      document.body.removeChild(el);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }, [message.content]);
+
   return (
     <div className={`flex gap-2 sm:gap-3 ${isUser ? "flex-row-reverse" : "flex-row"} group`}>
       <div
@@ -56,12 +77,29 @@ function MessageBubble({ message }: { message: AIMessage }) {
       </div>
 
       <div
-        className={`max-w-[85%] sm:max-w-[75%] rounded-2xl px-3 py-2.5 sm:px-4 sm:py-3 text-sm leading-relaxed whitespace-pre-wrap break-words
+        className={`relative max-w-[85%] sm:max-w-[75%] rounded-2xl px-3 py-2.5 sm:px-4 sm:py-3 text-sm leading-relaxed whitespace-pre-wrap break-words
           ${isUser
             ? "bg-primary text-primary-foreground rounded-tr-sm"
             : "bg-muted text-foreground border border-border rounded-tl-sm"
           }`}
       >
+        {!isUser && (
+          <button
+            onClick={handleCopy}
+            aria-label={copied ? "Copied!" : "Copy message"}
+            title={copied ? "Copied!" : "Copy message"}
+            className="absolute right-2 top-2 rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 text-muted-foreground hover:text-foreground hover:bg-background/60"
+          >
+            {copied ? (
+              <span className="flex items-center gap-1 text-[10px] font-semibold text-green-500 pr-0.5">
+                <Check className="h-3 w-3 flex-shrink-0" />
+                Copied
+              </span>
+            ) : (
+              <Copy className="h-3.5 w-3.5" />
+            )}
+          </button>
+        )}
         {message.content}
         <div
           className={`mt-1 text-[10px] opacity-50 ${isUser ? "text-right" : "text-left"}`}

@@ -14,7 +14,74 @@ import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/componen
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ChevronLeft, Play, Settings, Send, Loader2, Bot, User } from "lucide-react";
+import { ChevronLeft, Play, Settings, Send, Loader2, Bot, User, Copy, Check } from "lucide-react";
+
+// ── Workspace message bubble ────────────────────────────────────────────────────
+
+function WorkspaceMessageBubble({ msg }: { msg: { id: string; role: string; content: string } }) {
+  const isUser = msg.role === "user";
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(msg.content).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }).catch(() => {
+      const el = document.createElement("textarea");
+      el.value = msg.content;
+      el.style.position = "fixed";
+      el.style.left = "-9999px";
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand("copy");
+      document.body.removeChild(el);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  return (
+    <div className={`flex gap-2 group ${isUser ? "justify-end" : "justify-start"}`}>
+      {!isUser && (
+        <div className="mt-0.5 h-6 w-6 flex-shrink-0 rounded-full bg-primary/10 flex items-center justify-center">
+          <Bot className="h-3 w-3 text-primary" />
+        </div>
+      )}
+      <div
+        className={`relative max-w-[85%] rounded-lg px-3 py-2 text-xs break-words ${
+          isUser
+            ? "bg-primary text-primary-foreground rounded-tr-none"
+            : "bg-muted text-foreground rounded-tl-none"
+        }`}
+        style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}
+      >
+        {!isUser && (
+          <button
+            onClick={handleCopy}
+            aria-label={copied ? "Copied!" : "Copy message"}
+            title={copied ? "Copied!" : "Copy message"}
+            className="absolute right-1.5 top-1.5 rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 text-muted-foreground hover:text-foreground hover:bg-background/60"
+          >
+            {copied ? (
+              <span className="flex items-center gap-0.5 text-[9px] font-semibold text-green-500">
+                <Check className="h-2.5 w-2.5 flex-shrink-0" />
+                Copied
+              </span>
+            ) : (
+              <Copy className="h-3 w-3" />
+            )}
+          </button>
+        )}
+        {msg.content}
+      </div>
+      {isUser && (
+        <div className="mt-0.5 h-6 w-6 flex-shrink-0 rounded-full bg-primary/10 flex items-center justify-center">
+          <User className="h-3 w-3 text-primary" />
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ── AI Chat Panel ──────────────────────────────────────────────────────────────
 
@@ -117,33 +184,7 @@ function AIChatPanel({ projectId }: { projectId: string }) {
           </div>
         )}
         {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`flex gap-2 ${
-              msg.role === "user" ? "justify-end" : "justify-start"
-            }`}
-          >
-            {msg.role === "assistant" && (
-              <div className="mt-0.5 h-6 w-6 flex-shrink-0 rounded-full bg-primary/10 flex items-center justify-center">
-                <Bot className="h-3 w-3 text-primary" />
-              </div>
-            )}
-            <div
-              className={`max-w-[85%] rounded-lg px-3 py-2 text-xs break-words ${
-                msg.role === "user"
-                  ? "bg-primary text-primary-foreground rounded-tr-none"
-                  : "bg-muted text-foreground rounded-tl-none"
-              }`}
-              style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}
-            >
-              {msg.content}
-            </div>
-            {msg.role === "user" && (
-              <div className="mt-0.5 h-6 w-6 flex-shrink-0 rounded-full bg-primary/10 flex items-center justify-center">
-                <User className="h-3 w-3 text-primary" />
-              </div>
-            )}
-          </div>
+          <WorkspaceMessageBubble key={msg.id} msg={msg} />
         ))}
         {plannerMutation.isPending && (
           <div className="flex gap-2">

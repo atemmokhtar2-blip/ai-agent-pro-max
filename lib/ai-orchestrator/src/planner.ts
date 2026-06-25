@@ -22,6 +22,8 @@ const PLANNER_MODELS = [
 
 type PlannerModel = (typeof PLANNER_MODELS)[number];
 
+// ── System prompts ─────────────────────────────────────────────────────────────
+
 const SYSTEM_PROMPT = `You are a professional software architect and technical planner for an AI Website & Bot Builder platform.
 
 Your role is to analyze user project requests and generate comprehensive, structured architecture plans.
@@ -74,6 +76,62 @@ Features and capabilities to add after initial launch.
 
 IMPORTANT: Always output ALL 12 sections. Be thorough but concise. This plan will be directly consumed by future AI modules for automated project generation.`;
 
+const CONVERSATION_SYSTEM_PROMPT = `You are the AI Agent assistant — a friendly, conversational AI for the AI Agent platform.
+
+The platform helps users build websites, bots, SaaS platforms, dashboards, e-commerce stores, and more using AI automation.
+
+Guidelines:
+- When greeted: respond warmly, introduce yourself briefly, and invite the user to describe a project they want to build
+- When asked who you are or what you do: explain naturally that you help turn software project ideas into detailed architecture plans
+- When asked what you can build: mention websites, bots, dashboards, SaaS platforms, mobile apps, e-commerce stores, and APIs
+- When thanked: respond warmly and naturally
+- Keep all responses short, friendly, and conversational (2-4 sentences maximum)
+- Never output numbered sections, architecture blueprints, or technical project plans
+- Respond in the same language the user writes in`;
+
+// ── Intent classification patterns ─────────────────────────────────────────────
+
+// Messages that match these patterns at the start (and are short) are greetings
+const GREETING_START_PATTERNS: RegExp[] = [
+  /^(hello|hi|hey|howdy|yo|greetings|sup|hola|ciao|bonjour|hallo|salut|ola|ohayo|konnichiwa)\b/i,
+  /^good\s+(morning|evening|afternoon|night|day)\b/i,
+  // Arabic greetings
+  /^(السلام\s*عليكم|سلام|مرحب[اً]?|أهل[اً]?|اهل[اً]?|صباح\s*الخير|مساء\s*الخير|هلا|هاي|ازيك|عامل\s*ايه|كيف\s*حالك)/u,
+  // Russian/other common
+  /^(привет|здравствуйте|ciao|salve)\b/iu,
+];
+
+// Messages matching these patterns are casual conversation (not project requests)
+const CASUAL_PATTERNS: RegExp[] = [
+  /\bhow\s+are\s+you\b/i,
+  /\bwho\s+are\s+you\b/i,
+  /\bwhat\s+(can|do)\s+you\b/i,
+  /\bwhat\s+is\s+(this|your|the)\b/i,
+  /\bwhat\s+are\s+you\b/i,
+  /\btell\s+me\s+about\s+your?self\b/i,
+  /^(thanks|thank\s+you|thx|ty|cheers|appreciated|great|nice|cool|awesome|perfect|good)\b/i,
+  /^(ok|okay|sure|alright|got\s+it|i\s+see|understood)\b/i,
+  // Arabic casual
+  /^(شكرا|شكراً|ممنون|متشكر|عظيم|حلو|تمام|ماشي)\b/u,
+  /\b(مين\s*انت|بتعمل\s*ايه|ايه\s*ده|عامل\s*ايه|كيف\s*حالك)\b/u,
+  /^(نعم|لا|ايوه|اه)\b/u,
+];
+
+// Both action + type must be present to be a clear project request
+const PROJECT_ACTION_PATTERNS: RegExp[] = [
+  /\b(build|create|make|develop|design|generate|launch|start|write|code|program|produce|deploy|set\s*up|setup|implement)\b/i,
+  /\b(اعمل|أعمل|ابني|أبني|انشئ|أنشئ|طور|اصنع|أصنع|اعملي|اعملنا|ابنيلي|عايز|عاوز|محتاج|ابي|ابغى|ودي)\b/u,
+];
+
+const PROJECT_TYPE_PATTERNS: RegExp[] = [
+  /\b(website|web\s*app|webapp|web\s*site|app|application|bot|chatbot|telegram|discord|slack|whatsapp|dashboard|saas|platform|api|system|store|shop|portal|service|tool|script|e[-\s]?commerce|ecommerce|mobile\s*app|landing\s*page|crm|erp|cms|marketplace|forum|blog|portfolio|admin\s*panel|control\s*panel|automation)\b/i,
+  /\b(موقع|بوت|تطبيق|تيليجرام|ديسكورد|واتساب|لوحة\s*تحكم|منصة|متجر|خدمة|سيستم|موبايل|سكريبت|مدونة|منتدى|نظام|ادارة)\b/u,
+];
+
+// ── Types ──────────────────────────────────────────────────────────────────────
+
+type IntentType = "GREETING" | "CONVERSATION" | "PROJECT" | "AMBIGUOUS";
+
 export interface PlannerMessage {
   role: string;
   content: string;
@@ -88,7 +146,7 @@ export interface PlannerResult {
 
 const TIMEOUT_MS = 90_000;
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Helpers ────────────────────────────────────────────────────────────────────
 
 function sanitizeEnvString(value: string | undefined): string | undefined {
   if (!value) return undefined;
@@ -99,7 +157,7 @@ function sanitizeEnvString(value: string | undefined): string | undefined {
   return cleaned || undefined;
 }
 
-// ── Error classification ──────────────────────────────────────────────────────
+// ── Error classification ───────────────────────────────────────────────────────
 
 interface ClassifiedError {
   type:
@@ -209,7 +267,7 @@ function classifyError(err: unknown, status?: number): ClassifiedError {
   };
 }
 
-// ── ASCII header validation ───────────────────────────────────────────────────
+// ── ASCII header validation ────────────────────────────────────────────────────
 
 /**
  * Asserts that every value in a headers map is a valid HTTP ByteString:
@@ -257,7 +315,120 @@ function assertAsciiHeaders(headers: Record<string, string>): void {
   console.log("[Planner] === END HEADER DIAGNOSTICS ===");
 }
 
-// ── Single model call ─────────────────────────────────────────────────────────
+// ── Intent classification ──────────────────────────────────────────────────────
+
+/**
+ * Fast rule-based intent classifier. Runs synchronously with no API calls.
+ * Returns AMBIGUOUS when the message doesn't clearly match any pattern.
+ */
+function classifyIntentRuleBased(message: string): IntentType {
+  const trimmed = message.trim();
+  const wordCount = trimmed.split(/\s+/).filter(Boolean).length;
+
+  // Check greeting patterns — short messages starting with a greeting
+  for (const pattern of GREETING_START_PATTERNS) {
+    if (pattern.test(trimmed) && wordCount <= 8) {
+      return "GREETING";
+    }
+  }
+
+  // Check casual conversation patterns
+  for (const pattern of CASUAL_PATTERNS) {
+    if (pattern.test(trimmed)) {
+      return "CONVERSATION";
+    }
+  }
+
+  // Check for project intent: requires BOTH an action verb AND a project type
+  const hasAction = PROJECT_ACTION_PATTERNS.some((p) => p.test(trimmed));
+  const hasType = PROJECT_TYPE_PATTERNS.some((p) => p.test(trimmed));
+
+  if (hasAction && hasType) {
+    return "PROJECT";
+  }
+
+  // Very short messages with no project keywords → likely casual
+  if (wordCount <= 3 && !hasAction && !hasType) {
+    return "CONVERSATION";
+  }
+
+  return "AMBIGUOUS";
+}
+
+/**
+ * LLM-based intent classifier for ambiguous messages.
+ * Uses the cheapest/fastest model with a 10-second timeout.
+ * Falls back to AMBIGUOUS on any error.
+ */
+async function classifyIntentWithLLM(
+  message: string,
+  apiKey: string,
+): Promise<IntentType> {
+  const classificationPrompt =
+    `Classify the following user message into exactly one category:\n\n` +
+    `GREETING - A salutation or opener (hello, hi, good morning, مرحبا, السلام عليكم, etc.)\n` +
+    `CONVERSATION - Casual chat, questions about the assistant, thanks, etc. (how are you, who are you, شكرا, etc.)\n` +
+    `PROJECT - A request to build, create, or develop software (build a website, create a bot, اعمل موقع, etc.)\n\n` +
+    `User message: "${message.slice(0, 500).replace(/"/g, '\\"')}"\n\n` +
+    `Reply with ONLY one word: GREETING, CONVERSATION, or PROJECT`;
+
+  try {
+    const requestHeaders: Record<string, string> = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+      "HTTP-Referer": "https://ai-agent-platform.replit.app",
+      "X-Title": "AI Agent Platform - Planner",
+    };
+
+    assertAsciiHeaders(requestHeaders);
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10_000);
+
+    let response: Response;
+    try {
+      response = await fetch(OPENROUTER_URL, {
+        method: "POST",
+        headers: requestHeaders,
+        body: JSON.stringify({
+          model: "deepseek/deepseek-v3",
+          messages: [{ role: "user", content: classificationPrompt }],
+          max_tokens: 10,
+          temperature: 0,
+          stream: false,
+        }),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+
+    if (!response.ok) {
+      return "AMBIGUOUS";
+    }
+
+    const data = (await response.json()) as Record<string, unknown>;
+    const choices = data["choices"] as
+      | { message: { content: string | null } }[]
+      | undefined;
+    const raw = choices?.[0]?.message?.content?.trim().toUpperCase() ?? "";
+
+    if (raw === "GREETING" || raw === "CONVERSATION" || raw === "PROJECT") {
+      return raw as IntentType;
+    }
+
+    // Handle cases where model adds extra text (e.g., "PROJECT\n...")
+    if (raw.startsWith("GREETING")) return "GREETING";
+    if (raw.startsWith("CONVERSATION")) return "CONVERSATION";
+    if (raw.startsWith("PROJECT")) return "PROJECT";
+
+    return "AMBIGUOUS";
+  } catch {
+    return "AMBIGUOUS";
+  }
+}
+
+// ── Single planning model call ─────────────────────────────────────────────────
 
 async function callOpenRouter(
   model: PlannerModel,
@@ -338,7 +509,69 @@ async function callOpenRouter(
   return { content, model: resolvedModel };
 }
 
-// ── Main export ───────────────────────────────────────────────────────────────
+// ── Conversational response call ───────────────────────────────────────────────
+
+async function callOpenRouterConversational(
+  messages: { role: string; content: string }[],
+  apiKey: string,
+): Promise<{ content: string; model: string }> {
+  const requestHeaders: Record<string, string> = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${apiKey}`,
+    "HTTP-Referer": "https://ai-agent-platform.replit.app",
+    "X-Title": "AI Agent Platform - Planner",
+  };
+
+  assertAsciiHeaders(requestHeaders);
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 30_000);
+
+  let response: Response;
+  try {
+    response = await fetch(OPENROUTER_URL, {
+      method: "POST",
+      headers: requestHeaders,
+      body: JSON.stringify({
+        model: "deepseek/deepseek-v3",
+        messages,
+        max_tokens: 300,
+        temperature: 0.7,
+        stream: false,
+      }),
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+
+  if (!response.ok) {
+    const errText = await response.text().catch(() => "(unreadable)");
+    throw Object.assign(
+      new Error(`OpenRouter HTTP ${response.status}: ${errText.slice(0, 300)}`),
+      { status: response.status },
+    );
+  }
+
+  const data = (await response.json()) as Record<string, unknown>;
+
+  const choices = data["choices"] as
+    | { message: { content: string | null }; finish_reason: string }[]
+    | undefined;
+
+  const content = choices?.[0]?.message?.content?.trim();
+
+  if (!content) {
+    throw new Error("empty conversational response");
+  }
+
+  const resolvedModel =
+    typeof data["model"] === "string" ? data["model"] : "deepseek/deepseek-v3";
+
+  return { content, model: resolvedModel };
+}
+
+// ── Main export ────────────────────────────────────────────────────────────────
 
 export async function runPlanner(
   userMessage: string,
@@ -346,7 +579,80 @@ export async function runPlanner(
 ): Promise<PlannerResult> {
   console.log("[Planner] Provider = OpenRouter");
 
+  // ── Step 1: Rule-based intent classification ─────────────────────────────────
+  let intent = classifyIntentRuleBased(userMessage);
+  console.log(`[Planner] Rule-based intent: ${intent}`);
+
   const apiKey = sanitizeEnvString(process.env["OPENROUTER_API_KEY"]);
+
+  // ── Step 2: LLM classification for ambiguous messages ────────────────────────
+  if (intent === "AMBIGUOUS" && apiKey) {
+    console.log("[Planner] Intent ambiguous — consulting LLM classifier");
+    intent = await classifyIntentWithLLM(userMessage, apiKey);
+    console.log(`[Planner] LLM-based intent: ${intent}`);
+  }
+
+  // Default unresolved ambiguous to PROJECT (safer than ignoring a build request)
+  if (intent === "AMBIGUOUS") {
+    intent = "PROJECT";
+    console.log("[Planner] Intent still ambiguous — defaulting to PROJECT");
+  }
+
+  // ── Step 3: Log final intent (required for runtime verification) ─────────────
+  if (intent === "GREETING") {
+    console.log("[Intent] Greeting");
+  } else if (intent === "CONVERSATION") {
+    console.log("[Intent] Conversation");
+  } else {
+    console.log("[Intent] Project");
+  }
+
+  // ── Step 4: Route by intent ───────────────────────────────────────────────────
+
+  // Non-project intents: greetings and casual conversation
+  if (intent === "GREETING" || intent === "CONVERSATION") {
+    if (!apiKey) {
+      // No API key — return a friendly static fallback (no plan, no config guide)
+      return {
+        content: intent === "GREETING"
+          ? buildGreetingFallback()
+          : buildConversationFallback(),
+        model: "none",
+        provider: "openrouter",
+      };
+    }
+
+    // Use LLM for a natural conversational response
+    const conversationalMessages = [
+      { role: "system", content: CONVERSATION_SYSTEM_PROMPT },
+      ...history
+        .slice(-4)
+        .map((m) => ({ role: m.role, content: m.content })),
+      { role: "user", content: userMessage },
+    ];
+
+    try {
+      const result = await callOpenRouterConversational(
+        conversationalMessages,
+        apiKey,
+      );
+      return {
+        content: result.content,
+        model: result.model,
+        provider: "openrouter",
+      };
+    } catch (err) {
+      console.error("[Planner] Conversational response failed:", err);
+      // Fall back to static response rather than surfacing an error
+      return {
+        content: buildGreetingFallback(),
+        model: "none",
+        provider: "openrouter",
+      };
+    }
+  }
+
+  // Project intent — run the full planner
 
   if (!apiKey) {
     console.warn("[Planner] OPENROUTER_API_KEY is not set");
@@ -419,7 +725,26 @@ export async function runPlanner(
   };
 }
 
-// ── Error messages ────────────────────────────────────────────────────────────
+// ── Response builders ──────────────────────────────────────────────────────────
+
+function buildGreetingFallback(): string {
+  return `Hello! I'm the **AI Agent** assistant — I help you turn ideas into structured architecture plans for websites, bots, dashboards, SaaS platforms, and more.
+
+To get started, describe the project you'd like to build. For example:
+- *"Build a restaurant website with online ordering"*
+- *"Create a Telegram download bot"*
+- *"Make a SaaS analytics dashboard"*
+
+Add your **OPENROUTER_API_KEY** in Replit Secrets to enable full AI responses.`;
+}
+
+function buildConversationFallback(): string {
+  return `I'm the **AI Agent** assistant — here to help you plan and architect software projects using AI.
+
+I can generate comprehensive architecture plans for websites, bots, SaaS platforms, dashboards, and more.
+
+Add your **OPENROUTER_API_KEY** in Replit Secrets to enable full conversational responses. Then just describe a project and I'll create a detailed plan for it!`;
+}
 
 function buildConfigurationGuide(userMessage: string): string {
   return `## Planner Engine — Configuration Required
@@ -475,7 +800,7 @@ The Planner tried every model in the fallback chain but none succeeded:
 ${lines.join("\n")}
 
 **Provider:** OpenRouter
-**Fallback chain:** ${PLANNER_MODELS.join(" → ")}
+**Fallback chain:** ${PLANNER_MODELS.join(" -> ")}
 
 Please try again in a moment. If the issue persists, verify your OPENROUTER_API_KEY is valid at [openrouter.ai/keys](https://openrouter.ai/keys).`;
 }
