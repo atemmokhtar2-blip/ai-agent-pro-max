@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Cpu, Loader2, Eye, EyeOff, CheckCircle2, XCircle } from "lucide-react";
+import { Logo } from "@/components/Logo";
+import { Loader2, Eye, EyeOff, CheckCircle2, XCircle } from "lucide-react";
 import { useState } from "react";
 
 // ── Validation schema ────────────────────────────────────────────────────────
@@ -160,7 +161,7 @@ export default function Register() {
       <div className="mx-auto w-full max-w-sm space-y-6">
         {/* Header */}
         <div className="flex flex-col items-center space-y-2 text-center">
-          <Cpu className="h-10 w-10 text-primary" />
+          <Logo size="lg" animate="float" variant="icon" />
           <h1 className="text-2xl font-bold tracking-tight">Create an account</h1>
           <p className="text-sm text-muted-foreground">
             Enter your details below to get started

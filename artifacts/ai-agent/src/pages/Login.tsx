@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Cpu, Loader2, Eye, EyeOff, CheckCircle2, XCircle } from "lucide-react";
+import { Logo } from "@/components/Logo";
+import { Loader2, Eye, EyeOff, XCircle } from "lucide-react";
 import { useState } from "react";
 
 const loginSchema = z.object({
@@ -78,7 +79,7 @@ export default function Login() {
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
       <div className="mx-auto w-full max-w-sm space-y-6">
         <div className="flex flex-col items-center space-y-2 text-center">
-          <Cpu className="h-10 w-10 text-primary" />
+          <Logo size="lg" animate="float" variant="icon" />
           <h1 className="text-2xl font-bold tracking-tight">Log in to your account</h1>
           <p className="text-sm text-muted-foreground">
             Enter your email below to log in to AI Agent

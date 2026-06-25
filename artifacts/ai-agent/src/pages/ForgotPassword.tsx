@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Cpu, Loader2 } from "lucide-react";
+import { Logo } from "@/components/Logo";
+import { Loader2 } from "lucide-react";
 
 const forgotSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -44,7 +45,7 @@ export default function ForgotPassword() {
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
       <div className="mx-auto w-full max-w-sm space-y-6">
         <div className="flex flex-col items-center space-y-2 text-center">
-          <Cpu className="h-10 w-10 text-primary" />
+          <Logo size="lg" animate="float" variant="icon" />
           <h1 className="text-2xl font-bold tracking-tight">Forgot password</h1>
           <p className="text-sm text-muted-foreground">
             Enter your email to receive a password reset link

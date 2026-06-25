@@ -3,6 +3,7 @@ import { Link, useLocation } from "wouter";
 import { useAuth } from "./AuthProvider";
 import { useLogout } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
+import { Logo } from "@/components/Logo";
 import {
   LayoutDashboard,
   FolderGit2,
@@ -10,7 +11,6 @@ import {
   ShieldAlert,
   Bell,
   LogOut,
-  Command,
   MessageSquare,
   Menu,
   X,
@@ -107,8 +107,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       >
         {/* Brand / Logo */}
         <div className="flex h-[var(--header-height)] flex-shrink-0 items-center gap-2 border-b border-border px-5">
-          <Command className="h-5 w-5 text-primary flex-shrink-0" />
-          <span className="font-bold tracking-tight">AI Agent</span>
+          <Logo size="sm" animate="glow" entrance={false} />
           {/* Close button — mobile only */}
           <Button
             variant="ghost"
@@ -192,8 +191,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           >
             <Menu className="h-5 w-5" />
           </Button>
-          <Command className="h-5 w-5 text-primary" />
-          <span className="font-bold tracking-tight">AI Agent</span>
+          <Logo size="sm" animate="glow" entrance={false} />
 
           {/* Desktop sidebar toggle — visible on lg+ inside the header */}
           <div className="hidden lg:flex ml-auto">

@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { ChevronRight, Code2, Cpu, Globe, Layout, Shield, Zap, Menu, X } from "lucide-react";
+import { Logo } from "@/components/Logo";
+import { ChevronRight, Code2, Globe, Layout, Shield, Zap, Menu, X } from "lucide-react";
 
 export default function Landing() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -12,10 +13,7 @@ export default function Landing() {
       <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="flex h-14 items-center justify-between px-4 mx-auto max-w-screen-xl">
           {/* Brand */}
-          <div className="flex items-center gap-2">
-            <Cpu className="h-5 w-5 text-primary flex-shrink-0" />
-            <span className="font-bold tracking-tight">AI Agent</span>
-          </div>
+          <Logo size="sm" animate="glow" />
 
           {/* Desktop nav */}
           <nav className="hidden md:flex items-center gap-6 text-sm font-medium">
@@ -203,6 +201,7 @@ export default function Landing() {
       {/* ── Footer ──────────────────────────────────────────────────────────── */}
       <footer className="border-t border-border py-6 bg-card">
         <div className="flex flex-col items-center justify-between gap-4 sm:flex-row mx-auto px-4 max-w-screen-xl text-sm text-muted-foreground">
+          <Logo size="xs" animate="static" entrance={false} />
           <p>
             Built by AI Agent Inc. The source code is available on{" "}
             <a
