@@ -1,6 +1,8 @@
 /**
  * ChatWorkspace — outer shell: sidebar + PlannerWorkspace.
  * Manages conversation lifecycle; delegates all AI interaction to PlannerWorkspace.
+ *
+ * Upgrades: search, pin (localStorage), relative timestamps, sidebar layout.
  */
 import { useState, useRef, useEffect, useCallback } from "react";
 import {
@@ -21,23 +23,86 @@ import { PlannerWorkspace } from "@/components/PlannerWorkspace";
 import { AIPulse } from "@/components/design-system/AIPulse";
 import { NeuralGrid } from "@/components/design-system/NeuralGrid";
 
+// ── Helpers ────────────────────────────────────────────────────────────────────
+
+function relativeTime(iso: string): string {
+  const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (diff < 60) return "just now";
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  if (diff < 172800) return "Yesterday";
+  return new Date(iso).toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
+const PINNED_KEY = "aiagent_pinned_convs";
+
+function loadPinned(): Set<string> {
+  try {
+    const raw = localStorage.getItem(PINNED_KEY);
+    if (!raw) return new Set();
+    return new Set(JSON.parse(raw) as string[]);
+  } catch {
+    return new Set();
+  }
+}
+
+function savePinned(pinned: Set<string>) {
+  try {
+    localStorage.setItem(PINNED_KEY, JSON.stringify([...pinned]));
+  } catch { /* ignore */ }
+}
+
+// ── Icons ──────────────────────────────────────────────────────────────────────
+
+function PinIcon({ filled }: { filled: boolean }) {
+  return (
+    <svg width="10" height="10" viewBox="0 0 12 12" fill={filled ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M5 1L8 1A1 1 0 018 3L7.5 5.5L9 7H3L4.5 5.5L4 3A1 1 0 014 1H5Z" />
+      <line x1="6" y1="7" x2="6" y2="11" />
+    </svg>
+  );
+}
+
+function SearchIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+      <circle cx="5.5" cy="5.5" r="3.5" />
+      <line x1="8.5" y1="8.5" x2="11" y2="11" />
+    </svg>
+  );
+}
+
+function ClearIcon() {
+  return (
+    <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+      <line x1="1" y1="1" x2="9" y2="9" />
+      <line x1="9" y1="1" x2="1" y2="9" />
+    </svg>
+  );
+}
+
 // ── Conversation sidebar item ──────────────────────────────────────────────────
 
 interface ConversationItemProps {
   conv: AIConversation;
   isActive: boolean;
+  isPinned: boolean;
   onSelect: () => void;
   onRename: (title: string) => void;
   onDelete: () => void;
+  onTogglePin: () => void;
 }
 
-function ConversationItem({ conv, isActive, onSelect, onRename, onDelete }: ConversationItemProps) {
+function ConversationItem({ conv, isActive, isPinned, onSelect, onRename, onDelete, onTogglePin }: ConversationItemProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(conv.title ?? "New conversation");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { if (isEditing) inputRef.current?.focus(); }, [isEditing]);
+  useEffect(() => {
+    if (!isEditing) setEditValue(conv.title ?? "New conversation");
+  }, [conv.title, isEditing]);
 
   const submitRename = () => {
     const trimmed = editValue.trim();
@@ -60,16 +125,20 @@ function ConversationItem({ conv, isActive, onSelect, onRename, onDelete }: Conv
   return (
     <div
       className={[
-        "group mx-2 mb-0.5 flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2.5 text-sm transition-colors min-h-[2.5rem]",
+        "group mx-2 mb-0.5 flex cursor-pointer items-start gap-2 rounded-lg px-3 py-2 text-sm transition-colors min-h-[2.5rem]",
         isActive ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground",
       ].join(" ")}
       onClick={!isEditing ? onSelect : undefined}
     >
-      <div className="flex-shrink-0">
-        {isActive
-          ? <AIPulse size={14} color="#6366f1" active />
-          : <div className="h-1.5 w-1.5 rounded-full bg-muted-foreground/30" />
-        }
+      {/* Left indicator */}
+      <div className="flex-shrink-0 mt-0.5">
+        {isPinned && !isActive ? (
+          <span className="text-primary/60"><PinIcon filled /></span>
+        ) : isActive ? (
+          <AIPulse size={14} color="#6366f1" active />
+        ) : (
+          <div className="h-1.5 w-1.5 rounded-full bg-muted-foreground/30 mt-1" />
+        )}
       </div>
 
       {isEditing ? (
@@ -78,7 +147,10 @@ function ConversationItem({ conv, isActive, onSelect, onRename, onDelete }: Conv
             ref={inputRef}
             value={editValue}
             onChange={(e) => setEditValue(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") submitRename(); if (e.key === "Escape") setIsEditing(false); }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") submitRename();
+              if (e.key === "Escape") setIsEditing(false);
+            }}
             className="h-6 flex-1 border-primary/40 bg-background px-1.5 text-xs text-foreground"
           />
           <button onClick={submitRename} className="text-primary hover:opacity-80 p-1" aria-label="Save">
@@ -89,26 +161,52 @@ function ConversationItem({ conv, isActive, onSelect, onRename, onDelete }: Conv
           </button>
         </div>
       ) : (
-        <>
-          <span className="min-w-0 flex-1 truncate text-sm">{conv.title ?? "New conversation"}</span>
-          <div className="flex flex-shrink-0 gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-            <button
-              onClick={(e) => { e.stopPropagation(); setEditValue(conv.title ?? ""); setIsEditing(true); }}
-              className="rounded p-1 hover:bg-background/50"
-              aria-label="Rename"
-            >
-              <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M7.5 1.5l2 2-6 6H1.5v-2l6-6z" /></svg>
-            </button>
-            <button
-              onClick={(e) => { e.stopPropagation(); setConfirmDelete(true); }}
-              className="rounded p-1 hover:bg-destructive/20 hover:text-destructive"
-              aria-label="Delete"
-            >
-              <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M1.5 3h8M4 3V2h3v1M2.5 3l.5 6h5l.5-6" /></svg>
-            </button>
+        <div className="flex flex-1 flex-col min-w-0">
+          <div className="flex items-center gap-1 min-w-0">
+            <span className="min-w-0 flex-1 truncate text-sm leading-snug">{conv.title ?? "New conversation"}</span>
+            {/* Action buttons — shown on hover */}
+            <div className="flex flex-shrink-0 gap-0 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
+              <button
+                onClick={onTogglePin}
+                className={`rounded p-1 transition-colors ${isPinned ? "text-primary/60 hover:text-primary" : "hover:bg-background/50"}`}
+                aria-label={isPinned ? "Unpin" : "Pin"}
+                title={isPinned ? "Unpin" : "Pin"}
+              >
+                <PinIcon filled={isPinned} />
+              </button>
+              <button
+                onClick={() => { setEditValue(conv.title ?? ""); setIsEditing(true); }}
+                className="rounded p-1 hover:bg-background/50"
+                aria-label="Rename"
+              >
+                <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M7.5 1.5l2 2-6 6H1.5v-2l6-6z" /></svg>
+              </button>
+              <button
+                onClick={() => setConfirmDelete(true)}
+                className="rounded p-1 hover:bg-destructive/20 hover:text-destructive"
+                aria-label="Delete"
+              >
+                <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M1.5 3h8M4 3V2h3v1M2.5 3l.5 6h5l.5-6" /></svg>
+              </button>
+            </div>
           </div>
-        </>
+          {/* Timestamp */}
+          <span className={`text-[10px] mt-0.5 transition-colors ${isActive ? "text-primary/50" : "text-muted-foreground/40"}`}>
+            {relativeTime(conv.updated_at)}
+          </span>
+        </div>
       )}
+    </div>
+  );
+}
+
+// ── Section label ──────────────────────────────────────────────────────────────
+
+function SidebarSection({ label }: { label: string }) {
+  return (
+    <div className="mx-3 mb-1 mt-3 flex items-center gap-2">
+      <span className="text-[9px] font-semibold uppercase tracking-widest text-muted-foreground/40">{label}</span>
+      <div className="flex-1 h-px bg-border/30" />
     </div>
   );
 }
@@ -145,6 +243,9 @@ export default function ChatWorkspace() {
   const [sidebarOpen, setSidebarOpen] = useState(() =>
     typeof window !== "undefined" ? window.innerWidth >= 768 : true
   );
+  const [search, setSearch] = useState("");
+  const [pinned, setPinned] = useState<Set<string>>(() => loadPinned());
+  const searchRef = useRef<HTMLInputElement>(null);
 
   const { data: convList, isLoading: listLoading } = useListConversations();
   const { data: activeConv, isLoading: convLoading } = useGetConversation(selectedId!, {
@@ -155,6 +256,15 @@ export default function ChatWorkspace() {
   const renameMutation = useRenameConversation();
   const deleteMutation = useDeleteConversation();
 
+  const handleTogglePin = useCallback((id: string) => {
+    setPinned((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      savePinned(next);
+      return next;
+    });
+  }, []);
+
   const handleNewChat = () => {
     createMutation.mutate(
       { data: { title: "New conversation" } },
@@ -163,6 +273,7 @@ export default function ChatWorkspace() {
           queryClient.invalidateQueries({ queryKey: getListConversationsQueryKey() });
           setSelectedId(conv.id);
           setIsFirstMessage(true);
+          setSearch("");
           if (window.innerWidth < 768) setSidebarOpen(false);
         },
         onError: () => toast.error("Failed to create conversation"),
@@ -206,8 +317,22 @@ export default function ChatWorkspace() {
     queryClient.invalidateQueries({ queryKey: getListConversationsQueryKey() });
   }, [queryClient]);
 
-  const conversations = convList?.items ?? [];
+  const allConversations = convList?.items ?? [];
   const messages = activeConv?.messages ?? [];
+
+  // Filter by search
+  const filtered = search.trim()
+    ? allConversations.filter((c) =>
+        (c.title ?? "New conversation").toLowerCase().includes(search.toLowerCase())
+      )
+    : allConversations;
+
+  // Partition into pinned + rest
+  const pinnedConvs = filtered.filter((c) => pinned.has(c.id));
+  const unpinnedConvs = filtered.filter((c) => !pinned.has(c.id));
+
+  const hasPinned = pinnedConvs.length > 0;
+  const hasUnpinned = unpinnedConvs.length > 0;
 
   return (
     <div className="relative flex h-full w-full overflow-hidden">
@@ -229,10 +354,17 @@ export default function ChatWorkspace() {
         aria-label="Conversations"
       >
         {/* Header */}
-        <div className="flex-shrink-0 border-b border-border p-3">
-          <div className="flex items-center gap-2 mb-3 px-1">
+        <div className="flex-shrink-0 border-b border-border p-3 space-y-2">
+          <div className="flex items-center gap-2 px-1">
             <AIPulse size={20} color="#6366f1" active />
-            <span className="text-sm font-semibold text-foreground">AI Agent</span>
+            <span className="text-sm font-semibold text-foreground flex-1">AI Agent</span>
+            <button
+              onClick={() => { setSidebarOpen(false); }}
+              className="md:hidden flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              aria-label="Close sidebar"
+            >
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><line x1="1" y1="1" x2="11" y2="11" /><line x1="11" y1="1" x2="1" y2="11" /></svg>
+            </button>
           </div>
           <Button onClick={handleNewChat} disabled={createMutation.isPending} className="w-full gap-2" size="sm">
             {createMutation.isPending
@@ -241,34 +373,93 @@ export default function ChatWorkspace() {
             }
             New Plan
           </Button>
+          {/* Search */}
+          {allConversations.length > 0 && (
+            <div className="relative">
+              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/50 pointer-events-none">
+                <SearchIcon />
+              </span>
+              <input
+                ref={searchRef}
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search plans..."
+                className="w-full rounded-md border border-border bg-background/60 py-1.5 pl-7 pr-7 text-xs text-foreground placeholder:text-muted-foreground/40 focus:border-primary/40 focus:outline-none focus:ring-1 focus:ring-primary/20 transition-all"
+              />
+              {search && (
+                <button
+                  onClick={() => { setSearch(""); searchRef.current?.focus(); }}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground/50 hover:text-foreground transition-colors"
+                >
+                  <ClearIcon />
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* List */}
-        <div className="flex-1 overflow-y-auto py-2">
+        <div className="flex-1 overflow-y-auto py-1">
           {listLoading ? (
             <div className="flex justify-center py-8"><AIPulse size={24} color="#6366f1" active /></div>
-          ) : conversations.length === 0 ? (
+          ) : allConversations.length === 0 ? (
             <div className="px-4 py-8 text-center">
               <p className="text-xs text-muted-foreground">No plans yet</p>
               <p className="text-xs text-muted-foreground/60 mt-1">Click "New Plan" to start</p>
             </div>
+          ) : filtered.length === 0 ? (
+            <div className="px-4 py-8 text-center">
+              <p className="text-xs text-muted-foreground">No matching plans</p>
+            </div>
           ) : (
-            conversations.map((conv) => (
-              <ConversationItem
-                key={conv.id}
-                conv={conv}
-                isActive={conv.id === selectedId}
-                onSelect={() => handleSelect(conv.id)}
-                onRename={(title) => handleRename(conv.id, title)}
-                onDelete={() => handleDelete(conv.id)}
-              />
-            ))
+            <>
+              {hasPinned && (
+                <>
+                  <SidebarSection label="Pinned" />
+                  {pinnedConvs.map((conv) => (
+                    <ConversationItem
+                      key={conv.id}
+                      conv={conv}
+                      isActive={conv.id === selectedId}
+                      isPinned={true}
+                      onSelect={() => handleSelect(conv.id)}
+                      onRename={(title) => handleRename(conv.id, title)}
+                      onDelete={() => handleDelete(conv.id)}
+                      onTogglePin={() => handleTogglePin(conv.id)}
+                    />
+                  ))}
+                </>
+              )}
+              {hasUnpinned && (
+                <>
+                  {hasPinned && <SidebarSection label="Recent" />}
+                  {unpinnedConvs.map((conv) => (
+                    <ConversationItem
+                      key={conv.id}
+                      conv={conv}
+                      isActive={conv.id === selectedId}
+                      isPinned={false}
+                      onSelect={() => handleSelect(conv.id)}
+                      onRename={(title) => handleRename(conv.id, title)}
+                      onDelete={() => handleDelete(conv.id)}
+                      onTogglePin={() => handleTogglePin(conv.id)}
+                    />
+                  ))}
+                </>
+              )}
+            </>
           )}
         </div>
 
         {/* Footer */}
         <div className="flex-shrink-0 border-t border-border/50 p-3">
-          <p className="text-[10px] text-muted-foreground/40 text-center">Planner · Architecture Engine</p>
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] text-muted-foreground/40">Planner · Architecture Engine</p>
+            {allConversations.length > 0 && (
+              <p className="text-[10px] text-muted-foreground/30 tabular-nums">{allConversations.length} plan{allConversations.length !== 1 ? "s" : ""}</p>
+            )}
+          </div>
         </div>
       </aside>
 

@@ -315,8 +315,8 @@ export function PlannerWorkspace({ conversationId, messages, isFirstMessage, onS
     }
   }, [phase]);
 
-  const handleSend = useCallback(async () => {
-    const content = input.trim();
+  const handleSend = useCallback(async (overrideContent?: string) => {
+    const content = overrideContent !== undefined ? overrideContent : input.trim();
     if (!content || isStreaming) return;
 
     setInput("");
@@ -476,13 +476,34 @@ export function PlannerWorkspace({ conversationId, messages, isFirstMessage, onS
 
     // Idle: render last blueprint from persisted messages
     const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
+    const lastUser = [...messages].reverse().find((m) => m.role === "user");
     if (lastAssistant) {
       const metadata = lastAssistant.metadata as { module?: string; model?: string } | null;
       const isPlan = metadata?.module === "planner" || lastAssistant.content.includes("## 1.");
-      if (isPlan) {
-        return <PastBlueprintView content={lastAssistant.content} model={metadata?.model ?? undefined} />;
-      }
-      return <ConversationMessage content={lastAssistant.content} timestamp={lastAssistant.created_at} />;
+      return (
+        <div className="flex flex-col gap-3">
+          {isPlan ? (
+            <PastBlueprintView content={lastAssistant.content} model={metadata?.model ?? undefined} />
+          ) : (
+            <ConversationMessage content={lastAssistant.content} timestamp={lastAssistant.created_at} />
+          )}
+          {lastUser && (
+            <div className="flex justify-center pt-1">
+              <button
+                onClick={() => handleSend(lastUser.content)}
+                disabled={isStreaming}
+                className="flex items-center gap-1.5 rounded-full border border-border bg-card/60 px-3 py-1.5 text-[11px] text-muted-foreground hover:text-foreground hover:border-primary/30 hover:bg-muted transition-all disabled:opacity-40"
+              >
+                <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9.5 2A5 5 0 1 0 9.8 6.5" />
+                  <polyline points="9.5,0 9.5,2.5 7,2.5" />
+                </svg>
+                Regenerate response
+              </button>
+            </div>
+          )}
+        </div>
+      );
     }
 
     return null;
@@ -560,7 +581,7 @@ export function PlannerWorkspace({ conversationId, messages, isFirstMessage, onS
             <Button
               size="icon"
               className="mb-2 mr-2 h-8 w-8 flex-shrink-0"
-              onClick={handleSend}
+              onClick={() => handleSend()}
               disabled={!input.trim() || isStreaming}
             >
               {isStreaming ? (

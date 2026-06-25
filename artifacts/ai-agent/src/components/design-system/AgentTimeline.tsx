@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { AIPulse } from "./AIPulse";
 import { NeuralGrid } from "./NeuralGrid";
 import { DataCore } from "./DataCore";
@@ -85,7 +87,62 @@ function formatTimestamp(iso: string): string {
   });
 }
 
+function formatDuration(startedAt: string, completedAt: string): string {
+  const ms = new Date(completedAt).getTime() - new Date(startedAt).getTime();
+  if (ms < 1000) return `${ms}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
+}
+
+// ── Progress bar ───────────────────────────────────────────────────────────────
+
+function ProgressBar({ stages }: { stages: StageState[] }) {
+  const completed = stages.filter((s) => s.status === "complete").length;
+  const total = stages.length;
+  const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+  const running = stages.some((s) => s.status === "running");
+
+  return (
+    <div className="mb-3 px-1">
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-[9px] font-semibold uppercase tracking-widest text-muted-foreground/40">
+          {running ? "Processing" : completed === total ? "Complete" : "Pipeline"}
+        </span>
+        <span className="text-[10px] text-muted-foreground/50 tabular-nums font-medium">
+          {completed}/{total}
+        </span>
+      </div>
+      <div className="h-1 w-full rounded-full bg-muted/40 overflow-hidden">
+        <motion.div
+          className="h-full rounded-full bg-gradient-to-r from-primary to-primary/70"
+          initial={{ width: 0 }}
+          animate={{ width: `${pct}%` }}
+          transition={{ duration: 0.4, ease: "easeOut" }}
+        />
+      </div>
+    </div>
+  );
+}
+
+// ── Full timeline ──────────────────────────────────────────────────────────────
+
 export function AgentTimeline({ stages, compact = false }: AgentTimelineProps) {
+  // Track which stages are expanded (auto-expand running, user can toggle completed)
+  const [manualExpanded, setManualExpanded] = useState<Set<number>>(new Set());
+
+  function isExpanded(stage: StageState): boolean {
+    if (stage.status === "running") return true;
+    return manualExpanded.has(stage.id);
+  }
+
+  function toggleExpand(id: number, e: React.MouseEvent) {
+    e.stopPropagation();
+    setManualExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
   if (compact) {
     return (
       <div className="flex items-center gap-1 overflow-x-auto py-2 px-1">
@@ -121,31 +178,50 @@ export function AgentTimeline({ stages, compact = false }: AgentTimelineProps) {
   }
 
   return (
-    <div className="flex flex-col gap-0 py-2">
+    <div className="flex flex-col gap-0 py-1">
+      <ProgressBar stages={stages} />
       {stages.map((stage, i) => {
         const isLast = i === stages.length - 1;
+        const expanded = isExpanded(stage);
+        const canToggle = stage.status === "complete";
+
         return (
-          <div key={stage.id} className="flex gap-3">
+          <motion.div
+            key={stage.id}
+            initial={{ opacity: 0, x: -6 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.25, delay: i * 0.04, ease: "easeOut" }}
+            className="flex gap-3"
+          >
             {/* Left column: connector line + icon */}
             <div className="flex flex-col items-center">
               <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center">
                 <StageIcon stageId={stage.id} status={stage.status} />
               </div>
               {!isLast && (
-                <div
-                  className={`w-px flex-1 min-h-[16px] mt-0.5 transition-colors duration-500 ${
-                    stage.status === "complete" ? "bg-green-500/30" : "bg-border/40"
-                  }`}
+                <motion.div
+                  className="w-px flex-1 min-h-[16px] mt-0.5"
+                  initial={{ backgroundColor: "rgb(var(--border) / 0.4)" }}
+                  animate={{
+                    backgroundColor: stage.status === "complete"
+                      ? "rgb(34 197 94 / 0.3)"
+                      : "rgb(var(--border) / 0.4)"
+                  }}
+                  transition={{ duration: 0.5 }}
                 />
               )}
             </div>
 
-            {/* Right column: stage info */}
-            <div className="flex flex-col pb-4">
-              <div className="flex items-center gap-2 mt-1">
+            {/* Right column */}
+            <div className="flex flex-col pb-3 min-w-0 flex-1">
+              <button
+                className={`flex items-center gap-2 mt-1 text-left ${canToggle ? "cursor-pointer" : "cursor-default"}`}
+                onClick={canToggle ? (e) => toggleExpand(stage.id, e) : undefined}
+                aria-expanded={canToggle ? expanded : undefined}
+              >
                 <StatusDot status={stage.status} />
                 <span
-                  className={`text-xs font-medium transition-colors duration-300 ${
+                  className={`text-xs font-medium transition-colors duration-300 flex-1 ${
                     stage.status === "running"
                       ? "text-primary"
                       : stage.status === "complete"
@@ -155,40 +231,66 @@ export function AgentTimeline({ stages, compact = false }: AgentTimelineProps) {
                 >
                   {stage.name}
                 </span>
-              </div>
-
-              {/* Running state: action verb + scanning dots */}
-              {stage.status === "running" && (
-                <div className="ml-6 mt-0.5 flex items-center gap-1">
-                  <span className="text-[10px] text-primary/70 font-medium tracking-wide">
-                    {stage.action ?? "Processing"}
-                  </span>
-                  <ScanningDots />
-                </div>
-              )}
-
-              {/* Complete state: timestamp */}
-              {stage.status === "complete" && (
-                <div className="ml-6 mt-0.5 flex items-center gap-1.5">
-                  <svg
-                    width="8"
-                    height="8"
-                    viewBox="0 0 8 8"
-                    fill="none"
-                    className="text-green-400/60 flex-shrink-0"
+                {canToggle && (
+                  <motion.span
+                    animate={{ rotate: expanded ? 90 : 0 }}
+                    transition={{ duration: 0.15 }}
+                    className="text-muted-foreground/30 flex-shrink-0"
                   >
-                    <circle cx="4" cy="4" r="3.5" stroke="currentColor" strokeWidth="0.8" />
-                    <path d="M4 2.5V4L5 5" stroke="currentColor" strokeWidth="0.8" strokeLinecap="round" />
-                  </svg>
-                  <span className="text-[10px] text-muted-foreground/40 tabular-nums">
-                    {stage.completedAt
-                      ? formatTimestamp(stage.completedAt)
-                      : "Complete"}
-                  </span>
-                </div>
-              )}
+                    <svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><polyline points="2,1 6,4 2,7" /></svg>
+                  </motion.span>
+                )}
+              </button>
+
+              <AnimatePresence initial={false}>
+                {expanded && (
+                  <motion.div
+                    key="detail"
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.18, ease: "easeInOut" }}
+                    className="overflow-hidden"
+                  >
+                    <div className="ml-6 mt-0.5 flex flex-col gap-0.5">
+                      {/* Running: action + scanning dots */}
+                      {stage.status === "running" && (
+                        <div className="flex items-center gap-1">
+                          <span className="text-[10px] text-primary/70 font-medium tracking-wide">
+                            {stage.action ?? "Processing"}
+                          </span>
+                          <ScanningDots />
+                        </div>
+                      )}
+
+                      {/* Complete: timestamps */}
+                      {stage.status === "complete" && (
+                        <div className="flex flex-col gap-0.5">
+                          {stage.action && (
+                            <span className="text-[10px] text-muted-foreground/50">{stage.action}</span>
+                          )}
+                          <div className="flex items-center gap-1.5">
+                            <svg width="8" height="8" viewBox="0 0 8 8" fill="none" className="text-green-400/60 flex-shrink-0">
+                              <circle cx="4" cy="4" r="3.5" stroke="currentColor" strokeWidth="0.8" />
+                              <path d="M4 2.5V4L5 5" stroke="currentColor" strokeWidth="0.8" strokeLinecap="round" />
+                            </svg>
+                            <span className="text-[10px] text-muted-foreground/40 tabular-nums">
+                              {stage.completedAt ? formatTimestamp(stage.completedAt) : "Complete"}
+                              {stage.startedAt && stage.completedAt && (
+                                <span className="ml-1 text-muted-foreground/30">
+                                  · {formatDuration(stage.startedAt, stage.completedAt)}
+                                </span>
+                              )}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
-          </div>
+          </motion.div>
         );
       })}
     </div>

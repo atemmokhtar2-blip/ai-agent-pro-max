@@ -1,19 +1,21 @@
-# [Project name]
+# AI Agent Platform
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+A professional AI-powered development platform where users describe software they want to build and receive complete architecture blueprints generated across 8 real execution stages via OpenRouter LLMs.
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
+- `pnpm --filter @workspace/api-server run dev` — run the API server (port 8000)
+- `pnpm --filter @workspace/ai-agent run dev` — run the frontend (port 5000)
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- Required env: `DATABASE_URL` — Postgres connection string, `OPENROUTER_API_KEY` — for LLM calls
 
 ## Stack
 
 - pnpm workspaces, Node.js 24, TypeScript 5.9
+- Frontend: React 19, Vite, Tailwind 4, Framer Motion, TanStack Query v5, Wouter
 - API: Express 5
 - DB: PostgreSQL + Drizzle ORM
 - Validation: Zod (`zod/v4`), `drizzle-zod`
@@ -22,24 +24,38 @@ _Replace the heading above with the project's name, and this line with one sente
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/ai-agent/src/pages/` — top-level pages (Dashboard, ChatWorkspace, auth pages)
+- `artifacts/ai-agent/src/components/` — shared components (AppLayout, PlannerWorkspace, Logo)
+- `artifacts/ai-agent/src/components/design-system/` — animated SVG icons (AIPulse, AgentTimeline, BlueprintCore, etc.)
+- `artifacts/api-server/src/routes/modules/ai.ts` — AI conversation + planner streaming routes
+- `lib/db/src/schema/future.ts` — AI conversations + messages schema (aiConversationsTable, aiMessagesTable)
+- `lib/api-spec/` — OpenAPI spec (source of truth for API contracts)
+- `lib/api-client-react/src/generated/` — auto-generated hooks + Zod schemas (do NOT edit by hand)
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- Planner uses SSE streaming (POST body) via `streamToPlannerEngine()` in `artifacts/ai-agent/src/lib/planner-stream.ts`
+- SSE disconnect detection uses `res.on("close")` not `req.on("close")` (req fires immediately when body is consumed)
+- OpenRouter model fallback chain: `moonshotai/kimi-k2 → deepseek/deepseek-chat-v3-0324 → openai/gpt-oss-20b:free`
+- Pin state is client-side localStorage only (no backend pin field on conversations)
+- Vite proxies `/api` to `localhost:8000`; frontend runs on port 5000
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+- **AI Planner**: 8-stage pipeline that generates architecture blueprints (parsed sections with file trees + execution summaries)
+- **Chat Workspace**: sidebar with search, pin, timestamps, and rename/delete per conversation
+- **Dashboard**: conversation stats (total plans, blueprints generated, this-week activity), recent AI plans + projects
+- **Auth**: register, login, forgot/reset password flows
+- **Landing**: marketing page with branding, features, pricing sections
+
+## Gotchas
+
+- HTTP headers must be ASCII-only — em dashes crash OpenRouter requests with a ByteString error
+- `AbortSignal.timeout()` properly aborts hanging fetches; `Promise.race` + `setTimeout` does NOT
+- Generated API hooks: `getListConversationsQueryKey()` takes optional params — pass none for the base key
+- `AIConversationList` returns `{ items, total, page, per_page }` (not just an array)
+- Vite config must guard `process.env.PORT` / `BASE_PATH` with an `isBuild` flag to avoid CI build failures
 
 ## User preferences
 
 _Populate as you build — explicit user instructions worth remembering across sessions._
-
-## Gotchas
-
-_Populate as you build — sharp edges, "always run X before Y" rules._
-
-## Pointers
-
-- See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
