@@ -14,6 +14,7 @@ import deploymentRouter from "./modules/deployment";
 import memoryRouter from "./modules/memory";
 import storageModuleRouter from "./modules/storage";
 import agentsRouter from "./modules/agents";
+import understandingRouter from "./modules/understanding";
 
 const router: IRouter = Router();
 
@@ -35,5 +36,6 @@ router.use("/v1/deployments", deploymentRouter);
 router.use("/v1/memory", memoryRouter);
 router.use("/v1/storage", storageModuleRouter);
 router.use("/v1/agents", agentsRouter);
+router.use("/v1/understanding", understandingRouter);
 
 export default router;

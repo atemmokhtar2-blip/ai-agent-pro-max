@@ -1,0 +1,25 @@
+export { buildSpec } from "./spec-builder.js";
+export { saveSpec, getSpecByConversation, getSpecById, updateSpecStatus } from "./spec-store.js";
+export type {
+  ExecutionSpec,
+  SpecFeature,
+  SpecPage,
+  SpecComponent,
+  FolderNode,
+  DbTable,
+  DbColumn,
+  ApiContract,
+  UserRole,
+  Permission,
+  PackageDependency,
+  DeploymentPlan,
+  RoadmapPhase,
+  ValidationIssue,
+  ValidationResult,
+  PhaseStatus,
+  PhaseTask,
+  ReviewFinding,
+  ReviewResult,
+  ExecutionPhaseInfo,
+  VerificationReport,
+} from "./spec-types.js";

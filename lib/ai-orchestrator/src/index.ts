@@ -22,6 +22,53 @@
  *   New agent    → extend BaseAgent, add to AGENTS_LIST in agent-registry.ts
  */
 
+// ─── Project Understanding Engine ─────────────────────────────────────────────
+export { analyzeProject } from "./understanding/project-analyzer.js";
+export { buildSpec } from "./specification/spec-builder.js";
+export { saveSpec, getSpecByConversation, getSpecById, updateSpecStatus } from "./specification/spec-store.js";
+export { validateArchitecture } from "./validation/architecture-validator.js";
+export { runPhases, getDefaultPhasePlan } from "./execution/phase-runner.js";
+export { reviewPhase } from "./execution/self-review-agent.js";
+export { runFinalVerification } from "./execution/final-verifier.js";
+export type { PhaseExecutionResult } from "./execution/phase-runner.js";
+export type {
+  ProjectType,
+  ProjectUnderstanding,
+  FrontendRequirements,
+  BackendRequirements,
+  DatabaseRequirements,
+  AuthRequirements,
+  ApiRequirements,
+  DeploymentRequirements,
+  SecurityRequirements,
+  PerformanceRequirements,
+  ScalabilityRequirements,
+  InferredRequirement,
+} from "./understanding/types.js";
+export type {
+  ExecutionSpec,
+  SpecFeature,
+  SpecPage,
+  SpecComponent,
+  FolderNode,
+  DbTable,
+  DbColumn,
+  ApiContract,
+  UserRole,
+  Permission,
+  PackageDependency,
+  DeploymentPlan,
+  RoadmapPhase,
+  ValidationIssue,
+  ValidationResult,
+  PhaseStatus,
+  PhaseTask,
+  ReviewFinding,
+  ReviewResult,
+  ExecutionPhaseInfo,
+  VerificationReport,
+} from "./specification/spec-types.js";
+
 // ─── Router + Core ─────────────────────────────────────────────────────────────
 export { aiRouter, taskClassifier } from "./router.js";
 export { modelRegistry, MODEL_CATALOG } from "./model-registry.js";
