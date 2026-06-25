@@ -81,7 +81,20 @@ export abstract class BaseProvider implements AIProvider {
       ...extra,
     };
     if (apiKey) {
-      headers["Authorization"] = `Bearer ${apiKey}`;
+      // Strip any non-ASCII characters (> 127) from the API key before placing
+      // it in the Authorization header. HTTP headers must be valid ByteStrings
+      // (characters in range 0–255); characters like em dashes (U+2014, 8212)
+      // cause Node.js fetch() to throw a ByteString TypeError. Valid API keys
+      // are always pure ASCII — any character above 127 indicates corruption
+      // (e.g. smart-dash substitution from copy-pasting).
+      const sanitizedKey = apiKey.replace(/[^\x00-\x7F]/g, "");
+      if (sanitizedKey !== apiKey) {
+        console.warn(
+          `[BaseProvider] buildHeaders: API key contained ${apiKey.length - sanitizedKey.length} non-ASCII character(s) — stripped before use. ` +
+          `Check that the key was not copy-pasted from a source that substitutes smart punctuation.`
+        );
+      }
+      headers["Authorization"] = `Bearer ${sanitizedKey}`;
     }
     return headers;
   }
