@@ -22,6 +22,7 @@ export { modelRegistry, MODEL_CATALOG } from "./model-registry.js";
 export { taskClassifier, classifyTask } from "./task-classifier.js";
 export { TASK_TYPES } from "./types.js";
 export { runPlanner } from "./planner.js";
+export { runPlannerStream, PLANNER_STAGES } from "./planner-stream.js";
 
 export type {
   TaskType,
@@ -32,3 +33,4 @@ export type {
   OrchestrationResult,
 } from "./types.js";
 export type { PlannerMessage, PlannerResult } from "./planner.js";
+export type { PlannerStreamEvent, PlannerStreamMessage } from "./planner-stream.js";

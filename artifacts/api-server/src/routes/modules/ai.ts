@@ -17,7 +17,8 @@ import {
 import { eq, and, desc, sql } from "drizzle-orm";
 import { registry } from "@workspace/ai-provider";
 import type { ProviderConfig } from "@workspace/ai-provider";
-import { aiRouter, modelRegistry, TASK_TYPES, runPlanner } from "@workspace/ai-orchestrator";
+import { aiRouter, modelRegistry, TASK_TYPES, runPlanner, runPlannerStream } from "@workspace/ai-orchestrator";
+import type { PlannerStreamEvent } from "@workspace/ai-orchestrator";
 import { generateId } from "../../lib/auth.js";
 import { authenticate } from "../../middlewares/authenticate.js";
 import { validateBody } from "../../middlewares/validate.js";
@@ -397,6 +398,154 @@ router.post("/planner", validateBody(plannerSchema), async (req, res) => {
     user_message: fmtMessage(userMsg!),
     assistant_message: fmtMessage(assistantMsg!),
   });
+});
+
+// POST /ai/planner/stream — Server-Sent Events streaming endpoint
+// Every event emitted here corresponds to real execution inside runPlannerStream.
+// No fake timers. No artificial delays. Stages advance as actual work completes.
+router.post("/planner/stream", validateBody(plannerSchema), async (req, res) => {
+  const userId = req.user!.sub;
+  const { message, conversation_id } = req.body as z.infer<typeof plannerSchema>;
+
+  // Set SSE headers before any async work so the client gets the stream ASAP
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders();
+
+  const sendEvent = (data: PlannerStreamEvent | { type: string; [k: string]: unknown }) => {
+    if (!res.writableEnded) {
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+    }
+  };
+
+  // Track client disconnect — abort the OpenRouter fetch if the browser closes
+  let aborted = false;
+  const abortController = new AbortController();
+  req.on("close", () => {
+    aborted = true;
+    abortController.abort();
+  });
+
+  try {
+    // ── Resolve or create conversation ──────────────────────────────────────
+    let conversationId = conversation_id;
+    if (!conversationId) {
+      const [conv] = await db
+        .insert(aiConversationsTable)
+        .values({ id: generateId(), userId, title: "New conversation", status: "active" })
+        .returning();
+      conversationId = conv!.id;
+    } else {
+      const [existing] = await db
+        .select({ id: aiConversationsTable.id })
+        .from(aiConversationsTable)
+        .where(and(eq(aiConversationsTable.id, conversationId), eq(aiConversationsTable.userId, userId)))
+        .limit(1);
+      if (!existing) {
+        sendEvent({ type: "error", message: "Conversation not found" });
+        res.end();
+        return;
+      }
+    }
+
+    // ── Persist user message ────────────────────────────────────────────────
+    const [userMsg] = await db
+      .insert(aiMessagesTable)
+      .values({ id: generateId(), conversationId, role: "user", content: message })
+      .returning();
+
+    // ── Load recent history (excluding message just inserted) ───────────────
+    const rawHistory = await db
+      .select()
+      .from(aiMessagesTable)
+      .where(eq(aiMessagesTable.conversationId, conversationId))
+      .orderBy(aiMessagesTable.createdAt);
+
+    const historyForPlanner = rawHistory
+      .slice(0, -1)
+      .map((m) => ({ role: m.role, content: m.content }));
+
+    // ── Run streaming planner ───────────────────────────────────────────────
+    let finalContent = "";
+    let finalModel = "";
+    let isConversation = false;
+
+    await runPlannerStream(
+      message,
+      historyForPlanner,
+      (event) => {
+        if (aborted) return;
+        // Intercept done/conversation to capture content for DB persistence
+        if (event.type === "done") {
+          finalContent = event.content;
+          finalModel = event.model;
+        } else if (event.type === "conversation") {
+          finalContent = event.content;
+          isConversation = true;
+        }
+        sendEvent(event);
+      },
+      abortController.signal,
+    );
+
+    if (aborted) return;
+
+    // ── Persist assistant reply ─────────────────────────────────────────────
+    if (finalContent) {
+      const [assistantMsg] = await db
+        .insert(aiMessagesTable)
+        .values({
+          id: generateId(),
+          conversationId,
+          role: "assistant",
+          content: finalContent,
+          metadata: isConversation
+            ? { module: "planner-conversation" }
+            : { module: "planner", model: finalModel || null },
+        })
+        .returning();
+
+      // Bump conversation updatedAt
+      await db
+        .update(aiConversationsTable)
+        .set({ updatedAt: new Date() })
+        .where(eq(aiConversationsTable.id, conversationId));
+
+      // Send enriched final event so the client has IDs for cache invalidation
+      if (!res.writableEnded) {
+        if (isConversation) {
+          res.write(`data: ${JSON.stringify({
+            type: "conversation",
+            content: finalContent,
+            conversationId,
+            messageId: assistantMsg!.id,
+          })}\n\n`);
+        } else {
+          // Stage 8 complete
+          res.write(`data: ${JSON.stringify({ type: "stage_complete", stage: 8 })}\n\n`);
+          res.write(`data: ${JSON.stringify({
+            type: "done",
+            content: finalContent,
+            model: finalModel,
+            conversationId,
+            messageId: assistantMsg!.id,
+          })}\n\n`);
+        }
+      }
+    }
+
+    if (!res.writableEnded) {
+      res.write("data: [DONE]\n\n");
+      res.end();
+    }
+  } catch (err) {
+    if (aborted) return;
+    const msg = err instanceof Error ? err.message : "Internal server error";
+    sendEvent({ type: "error", message: msg });
+    if (!res.writableEnded) res.end();
+  }
 });
 
 // ─── Provider Management ───────────────────────────────────────────────────────
