@@ -13,7 +13,7 @@
  */
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import {
   useRenameConversation,
   getListConversationsQueryKey,
@@ -29,6 +29,7 @@ import { AIPulse } from "./design-system/AIPulse";
 import { ExecutionPanel } from "./design-system/ExecutionPanel";
 import { streamToPlannerEngine, PLANNER_STAGES } from "@/lib/planner-stream";
 import type { PlannerStreamEvent } from "@/lib/planner-stream";
+import { repositoriesApi } from "@/lib/repo-api";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -589,12 +590,19 @@ export function PlannerWorkspace({ conversationId, messages, isFirstMessage, onS
   const [phase, setPhase] = useState<WorkspacePhase>({ kind: "idle" });
   const [isStreaming, setIsStreaming] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [selectedRepoId, setSelectedRepoId] = useState<string>("");
   const abortRef = useRef<AbortController | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const contentEndRef = useRef<HTMLDivElement>(null);
   const wasFirstRef = useRef(isFirstMessage);
 
   const renameMutation = useRenameConversation();
+
+  const { data: repositories } = useQuery({
+    queryKey: ["repositories"],
+    queryFn: repositoriesApi.list,
+    staleTime: 60_000,
+  });
 
   // Auto-scroll when content grows
   useEffect(() => {
@@ -711,7 +719,7 @@ export function PlannerWorkspace({ conversationId, messages, isFirstMessage, onS
     };
 
     try {
-      await streamToPlannerEngine(content, conversationId, handleEvent, controller.signal);
+      await streamToPlannerEngine(content, conversationId, handleEvent, controller.signal, selectedRepoId || undefined);
     } catch (err) {
       if (controller.signal.aborted) return;
       const msg = err instanceof Error ? err.message : "Connection failed";
@@ -871,6 +879,25 @@ export function PlannerWorkspace({ conversationId, messages, isFirstMessage, onS
         style={{ paddingBottom: "max(0.75rem, var(--safe-bottom))" }}
       >
         <div className="mx-auto max-w-3xl">
+          {repositories && repositories.length > 0 && (
+            <div className="mb-2 flex items-center gap-2">
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground flex-shrink-0">
+                <path d="M2 1h8a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1z" />
+                <path d="M4 1v10M8 1v10M1 4h10M1 8h10" />
+              </svg>
+              <select
+                value={selectedRepoId}
+                onChange={(e) => setSelectedRepoId(e.target.value)}
+                disabled={isStreaming}
+                className="flex-1 rounded-md border border-border bg-card px-2 py-1 text-[11px] text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/30 disabled:opacity-50"
+              >
+                <option value="">No repository context</option>
+                {repositories.map((r) => (
+                  <option key={r.id} value={r.id}>{r.full_name}</option>
+                ))}
+              </select>
+            </div>
+          )}
           <div className="relative flex items-end gap-2 rounded-xl border border-border bg-card shadow-sm focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-primary/20 transition-all">
             <Textarea
               ref={textareaRef}

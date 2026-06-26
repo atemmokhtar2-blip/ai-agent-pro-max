@@ -68,11 +68,15 @@ interface ExecutionRecord {
 
 // ─── API helpers ──────────────────────────────────────────────────────────────
 
+function authHeader(): Record<string, string> {
+  const token = localStorage.getItem("access_token");
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`/api${path}`, {
     ...init,
-    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
-    credentials: "include",
+    headers: { "Content-Type": "application/json", ...authHeader(), ...(init?.headers ?? {}) },
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));

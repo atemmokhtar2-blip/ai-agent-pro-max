@@ -30,6 +30,7 @@ export async function streamToPlannerEngine(
   conversationId: string,
   onEvent: (event: PlannerStreamEvent) => void,
   signal?: AbortSignal,
+  repositoryId?: string,
 ): Promise<void> {
   const token = localStorage.getItem("access_token");
 
@@ -39,7 +40,11 @@ export async function streamToPlannerEngine(
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify({ message, conversation_id: conversationId }),
+    body: JSON.stringify({
+      message,
+      conversation_id: conversationId,
+      ...(repositoryId ? { repository_id: repositoryId } : {}),
+    }),
     signal,
   });
 

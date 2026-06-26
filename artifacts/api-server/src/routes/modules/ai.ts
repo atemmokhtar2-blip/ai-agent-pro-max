@@ -13,6 +13,8 @@ import {
   aiConversationsTable,
   aiMessagesTable,
   providerConfigsTable,
+  repositoryImportsTable,
+  repoAnalysisResultsTable,
 } from "@workspace/db";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { registry } from "@workspace/ai-provider";
@@ -325,6 +327,7 @@ router.post("/conversations/:id/messages", validateBody(sendMessageSchema), asyn
 const plannerSchema = z.object({
   message: z.string().min(1).max(32000),
   conversation_id: z.string().optional(),
+  repository_id: z.string().optional(),
 });
 
 // POST /ai/planner
@@ -405,7 +408,7 @@ router.post("/planner", validateBody(plannerSchema), async (req, res) => {
 // No fake timers. No artificial delays. Stages advance as actual work completes.
 router.post("/planner/stream", validateBody(plannerSchema), async (req, res) => {
   const userId = req.user!.sub;
-  const { message, conversation_id } = req.body as z.infer<typeof plannerSchema>;
+  const { message, conversation_id, repository_id } = req.body as z.infer<typeof plannerSchema>;
 
   // Set SSE headers before any async work so the client gets the stream ASAP
   res.setHeader("Content-Type", "text/event-stream");
@@ -474,13 +477,39 @@ router.post("/planner/stream", validateBody(plannerSchema), async (req, res) => 
       .slice(0, -1)
       .map((m) => ({ role: m.role, content: m.content }));
 
+    // ── Inject repository context if provided ───────────────────────────────
+    let effectiveMessage = message;
+    if (repository_id) {
+      const [repo] = await db
+        .select()
+        .from(repositoryImportsTable)
+        .where(and(eq(repositoryImportsTable.id, repository_id), eq(repositoryImportsTable.userId, userId)))
+        .limit(1);
+      if (repo) {
+        const [analysis] = await db
+          .select()
+          .from(repoAnalysisResultsTable)
+          .where(eq(repoAnalysisResultsTable.repositoryImportId, repository_id))
+          .limit(1);
+        const lines: string[] = [`## Repository Context: ${repo.fullName}`];
+        if (analysis?.language) lines.push(`- Language: ${analysis.language}`);
+        if (analysis?.framework) lines.push(`- Framework: ${analysis.framework}`);
+        if (analysis?.packageManager) lines.push(`- Package Manager: ${analysis.packageManager}`);
+        if (analysis?.buildSystem) lines.push(`- Build System: ${analysis.buildSystem}`);
+        if (analysis?.hasDatabase) lines.push(`- Has Database: yes`);
+        if (analysis?.hasDocker) lines.push(`- Has Docker: yes`);
+        if (analysis?.hasCI) lines.push(`- Has CI: yes`);
+        effectiveMessage = `${lines.join("\n")}\n\n---\n\n${message}`;
+      }
+    }
+
     // ── Run streaming planner ───────────────────────────────────────────────
     let finalContent = "";
     let finalModel = "";
     let isConversation = false;
 
     await runPlannerStream(
-      message,
+      effectiveMessage,
       historyForPlanner,
       (event) => {
         if (aborted) return;
