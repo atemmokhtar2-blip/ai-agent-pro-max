@@ -42,6 +42,7 @@ function ImportDialog({
   onImported: () => void;
   githubConnected: boolean;
 }) {
+  const [, setLocation] = useLocation();
   const [tab, setTab] = useState<"url" | "browse">("url");
   const [url, setUrl] = useState("");
   const [pat, setPat] = useState("");
@@ -63,13 +64,14 @@ function ImportDialog({
 
   const importMutation = useMutation({
     mutationFn: repositoriesApi.importRepo,
-    onSuccess: (_resp: { repository: unknown; message: string }) => {
-      toast.success("Repository import started — analysis will begin shortly");
+    onSuccess: (resp: { repository: { id: string; full_name?: string }; message: string }) => {
+      toast.success("Repository imported — opening AI chat…");
       onImported();
       onClose();
       setUrl("");
       setPat("");
       setShowPat(false);
+      setLocation(`/chat?repo=${resp.repository.id}`);
     },
     onError: (err: Error & { data?: { requires_auth?: boolean; message?: string } }) => {
       const data = err.data;

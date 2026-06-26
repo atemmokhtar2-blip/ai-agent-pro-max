@@ -575,6 +575,7 @@ interface PlannerWorkspaceProps {
   messages: AIMessage[];
   isFirstMessage: boolean;
   onSuccess: (conversationId: string) => void;
+  initialRepoId?: string;
 }
 
 type WorkspacePhase =
@@ -584,13 +585,13 @@ type WorkspacePhase =
   | { kind: "done_conversation"; content: string }
   | { kind: "error"; message: string };
 
-export function PlannerWorkspace({ conversationId, messages, isFirstMessage, onSuccess }: PlannerWorkspaceProps) {
+export function PlannerWorkspace({ conversationId, messages, isFirstMessage, onSuccess, initialRepoId }: PlannerWorkspaceProps) {
   const queryClient = useQueryClient();
   const [input, setInput] = useState("");
   const [phase, setPhase] = useState<WorkspacePhase>({ kind: "idle" });
   const [isStreaming, setIsStreaming] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [selectedRepoId, setSelectedRepoId] = useState<string>("");
+  const [selectedRepoId, setSelectedRepoId] = useState<string>(initialRepoId ?? "");
   const abortRef = useRef<AbortController | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const contentEndRef = useRef<HTMLDivElement>(null);
@@ -598,11 +599,12 @@ export function PlannerWorkspace({ conversationId, messages, isFirstMessage, onS
 
   const renameMutation = useRenameConversation();
 
-  const { data: repositories } = useQuery({
+  const { data: reposData } = useQuery({
     queryKey: ["repositories"],
     queryFn: repositoriesApi.list,
     staleTime: 60_000,
   });
+  const repositories = reposData?.items ?? [];
 
   // Auto-scroll when content grows
   useEffect(() => {
@@ -610,6 +612,15 @@ export function PlannerWorkspace({ conversationId, messages, isFirstMessage, onS
       contentEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
   }, [phase]);
+
+  // Auto-open preview when a blueprint with runnable content is done
+  useEffect(() => {
+    if (phase.kind === "done_blueprint") {
+      const c = phase.content;
+      const hasRunnable = /<!DOCTYPE html|<html\b|```html|```css/i.test(c);
+      if (hasRunnable) setPreviewOpen(true);
+    }
+  }, [phase.kind]);
 
   const handleSend = useCallback(async (overrideContent?: string) => {
     const content = overrideContent !== undefined ? overrideContent : input.trim();

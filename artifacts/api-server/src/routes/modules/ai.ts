@@ -499,6 +499,30 @@ router.post("/planner/stream", validateBody(plannerSchema), async (req, res) => 
         if (analysis?.hasDatabase) lines.push(`- Has Database: yes`);
         if (analysis?.hasDocker) lines.push(`- Has Docker: yes`);
         if (analysis?.hasCI) lines.push(`- Has CI: yes`);
+
+        // Detected components
+        const comps = analysis?.components as { name?: string }[] | null;
+        if (Array.isArray(comps) && comps.length > 0) {
+          const names = comps.slice(0, 8).map((c) => c.name).filter(Boolean);
+          if (names.length > 0) lines.push(`- Key Components: ${names.join(", ")}`);
+        }
+
+        // Detected routes
+        const routeList = analysis?.routes as { path?: string; method?: string }[] | null;
+        if (Array.isArray(routeList) && routeList.length > 0) {
+          const paths = routeList.slice(0, 8)
+            .map((r) => (r.method ? `${r.method} ${r.path}` : r.path))
+            .filter(Boolean);
+          if (paths.length > 0) lines.push(`- API Routes: ${paths.join(", ")}`);
+        }
+
+        // Detected dependencies (top-level package names)
+        const deps = analysis?.dependencies as Record<string, string> | null;
+        if (deps && typeof deps === "object") {
+          const names = Object.keys(deps).slice(0, 12);
+          if (names.length > 0) lines.push(`- Dependencies: ${names.join(", ")}`);
+        }
+
         effectiveMessage = `${lines.join("\n")}\n\n---\n\n${message}`;
       }
     }

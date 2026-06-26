@@ -45,17 +45,43 @@ export interface LogEntry {
 /**
  * Clone a repository to the given destination.
  * Returns a SimpleGit instance scoped to the cloned directory.
+ *
+ * Git LFS: we always pass filter.lfs.smudge= and filter.lfs.required=false so
+ * that repositories over their LFS budget don't fail the entire import.
+ * LFS pointer files will remain as-is instead of being downloaded.
  */
 export async function cloneRepository(options: CloneOptions): Promise<SimpleGit> {
   const { url, destination, branch, depth = 50 } = options;
 
   await mkdir(destination, { recursive: true });
 
-  const args: string[] = [`--depth=${depth}`];
+  // These config flags skip LFS smudge filters so LFS-heavy repos don't abort
+  const lfsSkip = [
+    "--config", "filter.lfs.smudge=",
+    "--config", "filter.lfs.process=",
+    "--config", "filter.lfs.required=false",
+  ];
+
+  const args: string[] = [`--depth=${depth}`, ...lfsSkip];
   if (branch) args.push(`--branch=${branch}`);
 
   const git = simpleGit();
-  await git.clone(url, destination, args);
+  try {
+    await git.clone(url, destination, args);
+  } catch (err) {
+    const msg = String(err);
+    // If LFS-related, attempt a bare clone without checkout as a last resort
+    if (/lfs|smudge|filter|checkout/i.test(msg)) {
+      console.warn("[git] LFS error during clone, retrying with --no-checkout:", msg);
+      const noCheckoutArgs = [...args, "--no-checkout"];
+      await git.clone(url, destination, noCheckoutArgs).catch(() => {
+        // If even no-checkout fails, re-throw the original error
+        throw err;
+      });
+    } else {
+      throw err;
+    }
+  }
 
   return simpleGit(destination);
 }

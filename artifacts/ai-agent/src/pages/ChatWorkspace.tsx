@@ -5,7 +5,8 @@
  * Persistence: conversations and messages are stored in the database.
  * After refresh, the last active conversation is automatically restored.
  */
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { useSearch } from "wouter";
 import {
   useListConversations,
   useCreateConversation,
@@ -251,6 +252,8 @@ function NoConversationState({ onCreate, isCreating }: { onCreate: () => void; i
 
 export default function ChatWorkspace() {
   const queryClient = useQueryClient();
+  const urlSearch = useSearch();
+  const initialRepoId = useMemo(() => new URLSearchParams(urlSearch).get("repo") ?? undefined, [urlSearch]);
   const [selectedId, setSelectedId] = useState<string | null>(() => loadLastConvId());
   const [isFirstMessage, setIsFirstMessage] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(() =>
@@ -486,7 +489,7 @@ export default function ChatWorkspace() {
               )}
               {hasUnpinned && (
                 <>
-                  {hasPinned && <SidebarSection label="Recent" />}
+                  <SidebarSection label="Recent Conversations" />
                   {unpinnedConvs.map((conv) => (
                     <ConversationItem
                       key={conv.id}
@@ -550,6 +553,7 @@ export default function ChatWorkspace() {
               messages={messages}
               isFirstMessage={isFirstMessage}
               onSuccess={handleWorkspaceSuccess}
+              initialRepoId={initialRepoId}
             />
           )}
         </div>
