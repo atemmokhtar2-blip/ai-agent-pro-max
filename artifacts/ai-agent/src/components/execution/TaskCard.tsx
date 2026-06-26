@@ -3,6 +3,7 @@
  *
  * Individual floating card showing a single background task.
  * Clicking it opens the TaskDetailsDrawer.
+ * Handles all statuses: planning → working → building → executing → verifying → fixing → verified.
  */
 
 import React from "react";
@@ -30,6 +31,13 @@ const STATUS_ICONS: Record<string, React.ReactElement> = {
       </svg>
     </div>
   ),
+  verified: (
+    <div className="flex h-5 w-5 items-center justify-center rounded-full bg-green-500/20">
+      <svg width="10" height="10" viewBox="0 0 10 10" fill="none" className="text-green-400">
+        <polyline points="2,5 4,7 8,3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </div>
+  ),
   error: (
     <div className="flex h-5 w-5 items-center justify-center rounded-full bg-red-500/20">
       <svg width="10" height="10" viewBox="0 0 10 10" fill="none" className="text-red-400">
@@ -47,54 +55,76 @@ const STATUS_ICONS: Record<string, React.ReactElement> = {
   ),
 };
 
+function ActiveIcon({ color = "bg-primary" }: { color?: string }) {
+  return (
+    <div className="relative flex h-5 w-5 items-center justify-center">
+      <span className={`absolute h-full w-full animate-ping rounded-full ${color}/15`} />
+      <span className={`h-3 w-3 rounded-full ${color}/80`} />
+    </div>
+  );
+}
+
 export function TaskCard({ task, onInspect }: TaskCardProps) {
   const { dismissTask } = useTaskActions();
-  const isActive = task.status === "planning" || task.status === "working" || task.status === "building";
-  const isDone = task.status === "ready" || task.status === "error" || task.status === "cancelled";
-  const runningStage = task.stages.find((s) => s.status === "running");
+
+  const isActivePlanning = task.status === "planning" || task.status === "working" || task.status === "building";
+  const isActiveExec = task.status === "executing" || task.status === "verifying" || task.status === "fixing";
+  const isActive = isActivePlanning || isActiveExec;
+  const isDone = task.status === "ready" || task.status === "verified" || task.status === "error" || task.status === "cancelled";
+
+  const runningPlanStage = task.stages.find((s) => s.status === "running");
+  const runningExecPhase = task.execPhases?.find((p) => p.status === "running");
+  const activeCheckName = task.verificationChecks?.find((c) => c.status === "checking" || c.status === "fixing")?.name;
+
+  function getSubtitle(): string {
+    if (activeCheckName) return `Checking ${activeCheckName}…`;
+    if (runningExecPhase) return `${runningExecPhase.label}…`;
+    if (runningPlanStage) return `${runningPlanStage.action ?? runningPlanStage.name}…`;
+    return formatElapsed(task.startedAt, task.completedAt);
+  }
+
+  const iconNode = STATUS_ICONS[task.status] ?? (
+    isActiveExec
+      ? <ActiveIcon color={task.status === "verifying" ? "bg-cyan-500" : task.status === "fixing" ? "bg-orange-500" : "bg-violet-500"} />
+      : <ActiveIcon />
+  );
+
+  const borderClass = isActiveExec
+    ? "border-cyan-500/30 ring-1 ring-cyan-500/10"
+    : isActivePlanning
+    ? "border-primary/30 ring-1 ring-primary/10"
+    : task.status === "error"
+    ? "border-red-500/30"
+    : task.status === "verified"
+    ? "border-green-500/20"
+    : "border-border/60";
+
+  const glowGradient = isActiveExec
+    ? "from-transparent via-cyan-500 to-transparent"
+    : "from-transparent via-primary to-transparent";
+
+  const stagesDone = task.stages.filter((s) => s.status === "complete").length;
+  const checksPassed = task.verificationChecks?.filter((c) => c.status === "pass" || c.status === "fixed").length ?? 0;
+  const checksTotal = task.verificationChecks?.length ?? 0;
 
   return (
     <div
-      className={`group relative rounded-xl border bg-card/95 backdrop-blur-sm shadow-lg overflow-hidden transition-all duration-200 hover:shadow-xl ${
-        isActive
-          ? "border-primary/30 ring-1 ring-primary/10"
-          : task.status === "error"
-          ? "border-red-500/30"
-          : "border-border/60"
-      }`}
+      className={`group relative rounded-xl border bg-card/95 backdrop-blur-sm shadow-lg overflow-hidden transition-all duration-200 hover:shadow-xl ${borderClass}`}
     >
-      {/* Active glow line */}
       {isActive && (
-        <div className="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-transparent via-primary to-transparent opacity-60" />
+        <div className={`absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r ${glowGradient} opacity-60`} />
       )}
 
-      {/* Card body */}
       <button
         className="w-full text-left p-3"
         onClick={() => onInspect(task)}
         aria-label={`Inspect task: ${task.title}`}
       >
-        {/* Top row: icon + title + dismiss */}
         <div className="flex items-start gap-2 mb-2">
-          <div className="flex-shrink-0 mt-0.5">
-            {STATUS_ICONS[task.status] ?? (
-              <div className="relative flex h-5 w-5 items-center justify-center">
-                <span className="absolute h-full w-full animate-ping rounded-full bg-primary/15" />
-                <span className="h-3 w-3 rounded-full bg-primary/80" />
-              </div>
-            )}
-          </div>
+          <div className="flex-shrink-0 mt-0.5">{iconNode}</div>
           <div className="flex-1 min-w-0">
             <p className="text-xs font-semibold text-foreground leading-tight truncate">{task.title}</p>
-            {runningStage ? (
-              <p className="text-[10px] text-muted-foreground/60 mt-0.5 truncate">
-                {runningStage.action ?? runningStage.name}…
-              </p>
-            ) : (
-              <p className="text-[10px] text-muted-foreground/50 mt-0.5">
-                {formatElapsed(task.startedAt, task.completedAt)}
-              </p>
-            )}
+            <p className="text-[10px] text-muted-foreground/60 mt-0.5 truncate">{getSubtitle()}</p>
           </div>
           {isDone && (
             <button
@@ -110,19 +140,18 @@ export function TaskCard({ task, onInspect }: TaskCardProps) {
           )}
         </div>
 
-        {/* Progress bar */}
         <ExecutionProgress value={task.progress} status={task.status} showLabel />
 
-        {/* Bottom row: status + stages count */}
         <div className="flex items-center justify-between mt-2">
           <ExecutionStatusBadge status={task.status} />
           <span className="text-[10px] text-muted-foreground/40 tabular-nums">
-            {task.stages.filter((s) => s.status === "complete").length}/{task.stages.length} stages
+            {isActiveExec || task.status === "verified"
+              ? `${checksPassed}/${checksTotal} checks`
+              : `${stagesDone}/${task.stages.length} stages`}
           </span>
         </div>
       </button>
 
-      {/* Inspect button at bottom (visible on hover) */}
       <div className="border-t border-border/40 bg-muted/20 opacity-0 group-hover:opacity-100 transition-opacity">
         <button
           onClick={() => onInspect(task)}

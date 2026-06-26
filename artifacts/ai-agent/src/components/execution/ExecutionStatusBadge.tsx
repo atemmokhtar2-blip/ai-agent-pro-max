@@ -1,6 +1,7 @@
 /**
  * ExecutionStatusBadge
  * A small pill that shows the current task status with color coding.
+ * Handles all lifecycle statuses including executing, verifying, fixing, verified.
  */
 
 import type { TaskStatus } from "@/lib/task-store";
@@ -9,7 +10,7 @@ const CONFIG: Record<TaskStatus, { label: string; color: string; dot: string }> 
   planning: {
     label: "Planning",
     color: "bg-blue-500/10 text-blue-400 border-blue-500/20",
-    dot: "bg-blue-400",
+    dot: "bg-blue-400 animate-pulse",
   },
   working: {
     label: "Working",
@@ -20,6 +21,26 @@ const CONFIG: Record<TaskStatus, { label: string; color: string; dot: string }> 
     label: "Building",
     color: "bg-amber-500/10 text-amber-400 border-amber-500/20",
     dot: "bg-amber-400 animate-pulse",
+  },
+  executing: {
+    label: "Executing",
+    color: "bg-violet-500/10 text-violet-400 border-violet-500/20",
+    dot: "bg-violet-400 animate-pulse",
+  },
+  verifying: {
+    label: "Verifying",
+    color: "bg-cyan-500/10 text-cyan-400 border-cyan-500/20",
+    dot: "bg-cyan-400 animate-pulse",
+  },
+  fixing: {
+    label: "Auto-fixing",
+    color: "bg-orange-500/10 text-orange-400 border-orange-500/20",
+    dot: "bg-orange-400 animate-pulse",
+  },
+  verified: {
+    label: "Verified",
+    color: "bg-green-500/10 text-green-400 border-green-500/20",
+    dot: "bg-green-400",
   },
   ready: {
     label: "Ready",
@@ -44,7 +65,7 @@ interface ExecutionStatusBadgeProps {
 }
 
 export function ExecutionStatusBadge({ status, size = "sm" }: ExecutionStatusBadgeProps) {
-  const cfg = CONFIG[status];
+  const cfg = CONFIG[status] ?? CONFIG.planning;
   const textSize = size === "sm" ? "text-[10px]" : "text-xs";
 
   return (

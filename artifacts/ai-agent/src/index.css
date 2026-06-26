@@ -344,4 +344,37 @@
   .animate-slide-in-right {
     animation: slide-in-right 0.22s ease-out forwards;
   }
+
+  /* Verification card — fade+scale reveal */
+  @keyframes verification-card-enter {
+    from {
+      opacity: 0;
+      transform: translateY(8px) scale(0.98);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  .verification-card-enter {
+    animation: verification-card-enter 0.3s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  }
+
+  /* Verification check row — staggered slide-in from left */
+  @keyframes verify-check-row-in {
+    from {
+      opacity: 0;
+      transform: translateX(-8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  .verify-check-row {
+    opacity: 0;
+    animation: verify-check-row-in 0.2s ease-out forwards;
+  }
 }
