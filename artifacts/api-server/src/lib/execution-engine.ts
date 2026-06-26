@@ -610,11 +610,14 @@ async function callLLMForFileGeneration(
             { role: "system", content: systemPrompt },
             { role: "user", content: userPrompt },
           ],
-          max_tokens: 16000,
+          max_tokens: 4096,
           temperature: 0.2,
           stream: false,
         }),
-        signal: signal ?? AbortSignal.timeout(120_000),
+        // Always use an independent per-model timeout — never use the client's
+        // abort signal here. File generation must complete even if the SSE
+        // client disconnects mid-way through.
+        signal: AbortSignal.timeout(90_000),
       });
 
       if (!resp.ok) {
@@ -820,45 +823,27 @@ No prose, no markdown, no explanation — ONLY the JSON object starting with { a
 
 Every file must have real, complete, working code. No TODOs. No placeholders. No "coming soon".`;
 
-    const backendUser = `Generate ALL backend source files for this project.
+    // Slim prompt — only the 5 most critical backend files so we stay within
+    // the 4096-token output budget on every model tier.
+    // Pluralize without doubling — "users" → "users", "task" → "tasks"
+    const rawEntity = spec.dbSchema[0]?.name ?? "item";
+    const mainEntity = rawEntity.endsWith("s") ? rawEntity : `${rawEntity}s`;
+    const backendUser = `Generate the core backend files for this project. Return ONLY valid JSON.
 
-PROJECT: ${spec.projectType}
-SUMMARY: ${spec.summary.slice(0, 200)}
-TECH STACK: ${spec.techStack.join(", ")}
+PROJECT: ${spec.projectType} — ${spec.summary.slice(0, 120)}
+TECH: ${spec.techStack.slice(0, 4).join(", ")}
+DB TABLES: ${spec.dbSchema.slice(0, 3).map(t => t.name).join(", ") || "none"}
+KEY ENDPOINTS: ${spec.apiContracts.slice(0, 4).map(c => `${c.method} ${c.path}`).join(", ") || "CRUD"}
 
-DATABASE SCHEMA:
-${schemaLines || "  No DB tables defined — use in-memory storage."}
-
-API ENDPOINTS:
-${contractLines || "  No contracts defined — implement CRUD for main entities."}
-
-BACKEND FEATURES:
-${featureLines || "  - Standard CRUD API\n  - User authentication"}
-
-Required files to generate (ALL of them, complete implementations):
-- "server/index.${ext}" — Express server entry, listens on process.env.PORT ?? 3000, middleware, starts server
-- "server/app.${ext}" — Express app setup: cors, json parser, route mounting, error handler
-- "server/routes/index.${ext}" — Aggregates all routers: auth, and one per API group
-- "server/routes/auth.${ext}" — POST /auth/register, POST /auth/login, POST /auth/logout, POST /auth/refresh
-${spec.apiContracts.slice(0, 4).filter(c => !c.path.includes("auth")).map(c => {
-  const seg = c.path.split("/").filter(Boolean)[2] ?? "api";
-  return `- "server/routes/${seg}.${ext}" — ${c.method} ${c.path}: ${c.description}`;
-}).join("\n")}
-- "server/middleware/auth.${ext}" — JWT verify middleware, sets req.user
-- "server/middleware/validate.${ext}" — Zod body/query validation middleware
-- "server/middleware/error.${ext}" — Global Express error handler, returns JSON
-- "server/db/index.${ext}" — ${isDrizzle ? "Drizzle ORM connection pool using DATABASE_URL env var" : "Database connection (use DATABASE_URL env var)"}
-${spec.dbSchema.length > 0 ? `- "server/db/schema.${ext}" — ${isDrizzle ? "Drizzle ORM" : "SQL"} schema for all tables: ${spec.dbSchema.map(t => t.name).join(", ")}` : ""}
-- "server/lib/auth.${ext}" — JWT sign/verify helpers, password hash/compare with bcrypt
-- "server/lib/logger.${ext}" — Pino or console logger
-- "server/types.${ext}" — Shared TypeScript interfaces/types for all entities
-
-Rules:
-- ${isTS ? "TypeScript with strict types — include all type imports" : "Modern ESM JavaScript"}
-- All imports use ESM (import/export)
-- Use environment variables for DATABASE_URL, JWT_SECRET, PORT
-- Handle errors with try/catch, return proper HTTP status codes
-- Include JSDoc comments on exported functions`;
+Generate EXACTLY these 5 files (complete, working code, no TODOs):
+{
+  "server/index.${ext}": "<Express app: import app, listen on PORT env or 3000, log startup>",
+  "server/app.${ext}": "<Express setup: cors, json, auth routes at /api/auth, ${mainEntity} routes at /api/${mainEntity}, error handler>",
+  "server/routes/auth.${ext}": "<POST /api/auth/register and POST /api/auth/login — bcrypt password, JWT response>",
+  "server/routes/${mainEntity}.${ext}": "<Full CRUD: GET/POST /api/${mainEntity} and GET/PUT/DELETE /api/${mainEntity}/:id — requires JWT middleware>",
+  "server/middleware/auth.${ext}": "<JWT verify middleware: reads Authorization header, sets req.user, returns 401 on invalid>"
+}
+Rules: ${isTS ? "TypeScript, strict types" : "ESM JavaScript"}. Use DATABASE_URL, JWT_SECRET env vars. Real code only.`;
 
     try {
       const raw = await callLLMForFileGeneration(backendSys, backendUser, signal);
@@ -896,42 +881,27 @@ No prose, no markdown, no explanation — ONLY the JSON object starting with { a
 
 Every file must have real, complete, working JSX/TSX code with proper UI. No TODOs. No placeholders.`;
 
-    const frontendUser = `Generate ALL frontend source files for this project.
+    // Slim prompt — 5 core frontend files to stay within 4096-token output budget.
+    const page1 = spec.pages[0]?.name?.replace(/\s+/g, "") ?? "Home";
+    const page2 = spec.pages[1]?.name?.replace(/\s+/g, "") ?? "Dashboard";
+    const pageRoutes = spec.pages.length > 0
+      ? spec.pages.slice(0, 3).map(p => `${p.route}→${p.name.replace(/\s+/g, "")}Page`).join(", ")
+      : "/ → HomePage";
+    const frontendUser = `Generate the core frontend files for this project. Return ONLY valid JSON.
 
-PROJECT: ${spec.projectType}
-SUMMARY: ${spec.summary.slice(0, 200)}
-TECH STACK: ${spec.techStack.join(", ")}
-STYLING: ${isTW ? "Tailwind CSS utility classes" : "CSS modules / inline styles"}
+PROJECT: ${spec.projectType} — ${spec.summary.slice(0, 100)}
+TECH: React, ${isTS ? "TypeScript" : "JavaScript"}, ${isTW ? "Tailwind CSS" : "CSS"}
+PAGES: ${pageRoutes}
 
-PAGES:
-${pageLines || "  - Home page (/)"}
-
-COMPONENTS:
-${compLines || "  - Basic layout components"}
-
-Required files to generate (ALL of them, complete real implementations):
-- "index.html" — HTML entry with <div id="root">, import main.${rExt}
-- "src/main.${rExt}" — ReactDOM.createRoot, render App, import CSS
-- "src/App.${rExt}" — App component with ${spec.pages.length > 0 ? `routes for: ${spec.pages.map(p => p.route).join(", ")}` : "basic routing"}
-- "src/index.css" — Global styles${isTW ? ", Tailwind @tailwind directives" : ""}
-${spec.pages.slice(0, 6).map(p => `- "src/pages/${p.name.replace(/\s+/g, "")}Page.${rExt}" — ${p.description} (route: ${p.route})`).join("\n")}
-- "src/components/Layout.${rExt}" — Main layout with navbar, sidebar if needed, children slot
-- "src/components/Navbar.${rExt}" — Navigation bar with links to all pages${spec.understanding?.auth?.required ? ", login/logout" : ""}
-${spec.components.slice(0, 4).map(c => `- "${c.filePath}" — ${c.description}`).join("\n")}
-- "src/lib/api.${ext}" — Fetch wrapper for /api/* endpoints, includes auth token header
-- "src/hooks/useAuth.${ext}" — Auth state hook: user, login(), logout(), isAuthenticated
-- "src/types/index.${ext}" — TypeScript interfaces for all API response types
-${isTW ? `- "tailwind.config.${ext}" — Tailwind config with content paths
-- "postcss.config.${ext}" — PostCSS with tailwindcss and autoprefixer` : ""}
-- "vite.config.${ext}" — Vite config: react plugin, proxy /api → http://localhost:3000
-
-Rules:
-- ${isTS ? "TypeScript with proper React types (React.FC, etc.)" : "Modern JSX JavaScript"}
-- ${isTW ? "Use Tailwind utility classes for all styling — make it look professional and modern" : "Use clean CSS"}
-- Use wouter or react-router-dom for client-side routing
-- All components must render real UI — not just "coming soon" text
-- Include proper HTML structure, semantic elements
-- ${spec.understanding?.auth?.required ? "Include login/register forms and protected route logic" : ""}`;
+Generate EXACTLY these 5 files (complete, real JSX/TSX, no TODOs):
+{
+  "src/App.${rExt}": "<App with react-router-dom Routes for: ${pageRoutes}. Wrap in Layout.>",
+  "src/pages/${page1}Page.${rExt}": "<${page1} page with hero section, feature list, CTA button>",
+  "src/pages/${page2}Page.${rExt}": "<${page2} page with main content, data display, real UI>",
+  "src/components/Layout.${rExt}": "<Layout wrapper: Navbar at top, children in main, footer>",
+  "src/components/Navbar.${rExt}": "<Navbar: logo/brand, nav links to all pages, ${spec.understanding?.auth?.required ? "login/logout button" : "clean links"}>"
+}
+Rules: ${isTS ? "TypeScript (React.FC, proper types)" : "Modern JSX"}. ${isTW ? "Tailwind utility classes, modern professional UI." : "Clean CSS."} react-router-dom v6. Real UI only.`;
 
     try {
       const raw = await callLLMForFileGeneration(frontendSys, frontendUser, signal);
@@ -1564,27 +1534,82 @@ export class ExecutionService {
       const t2 = Date.now();
 
       try {
-        // Step A: Build spec via LLM (structured understanding → ExecutionSpec)
-        spec = await buildSpec(conversationId, understanding!, signal);
+        // Step A: Build spec via LLM — use a 45s independent timeout so the
+        // client's abort signal never kills this; the fallback spec is used if
+        // the model is slow, keeping the pipeline moving.
+        const specSignal = AbortSignal.timeout(45_000);
+        spec = await buildSpec(conversationId, understanding!, specSignal).catch(() => {
+          console.warn("[ExecutionEngine] buildSpec LLM failed — using blueprint-derived fallback spec");
+          return null;
+        });
 
-        if (!signal?.aborted && spec) {
-          // Step B: Persist spec to DB (non-fatal if it fails)
-          await saveSpec(userId, spec).catch(err =>
-            console.warn("[ExecutionEngine] saveSpec failed (non-fatal):", (err as Error).message),
-          );
-
-          // Step C: Generate ALL project files to disk (LLM → write → verify)
-          const genResult = await generateAllProjectFiles(spec, conversationId, send, signal);
-          generatedFiles = genResult.files;
-
-          console.log(
-            `[ExecutionEngine] Stage 2 complete: ${genResult.files.length} files · ` +
-            `${(genResult.totalBytes / 1024).toFixed(1)} KB → ${genResult.projectDir}`,
-          );
+        // If spec failed entirely, derive a minimal one from the blueprint analysis
+        if (!spec) {
+          const fallbackUnderstanding = buildUnderstandingFromAnalysis(analysis, blueprint);
+          // Import buildFallbackSpec inline via re-using the understanding
+          spec = {
+            id: `fallback-${Date.now()}`,
+            conversationId,
+            summary: `${fallbackUnderstanding.projectType} application`,
+            projectType: fallbackUnderstanding.projectType,
+            techStack: [
+              fallbackUnderstanding.frontend.framework,
+              fallbackUnderstanding.backend.language,
+              fallbackUnderstanding.database.type,
+              "TypeScript",
+              "Tailwind CSS",
+            ].filter(Boolean),
+            features: [
+              { id: "f1", name: "Core Application", description: "Main application functionality", priority: "must-have", category: "frontend" },
+              { id: "f2", name: "REST API", description: "Backend API endpoints", priority: "must-have", category: "backend" },
+              { id: "f3", name: "Authentication", description: "User login and registration", priority: "must-have", category: "auth" },
+            ],
+            pages: fallbackUnderstanding.frontend.pages.map((p, i) => ({
+              name: p, route: i === 0 ? "/" : `/${p.toLowerCase()}`,
+              description: `${p} page`, components: [], requiresAuth: i > 0,
+            })),
+            components: [],
+            folderStructure: [
+              { name: "src", type: "dir" as const, children: [{ name: "components", type: "dir" as const }, { name: "pages", type: "dir" as const }] },
+              { name: "server", type: "dir" as const, children: [{ name: "routes", type: "dir" as const }, { name: "middleware", type: "dir" as const }] },
+            ],
+            dbSchema: fallbackUnderstanding.database.tables.map(t => ({
+              name: t, description: `${t} table`,
+              columns: [{ name: "id", type: "uuid", nullable: false, primaryKey: true }, { name: "created_at", type: "timestamp", nullable: false }],
+            })),
+            apiContracts: [],
+            userRoles: [{ name: "user", description: "Standard user", permissions: ["read:own", "write:own"], isDefault: true }],
+            permissions: [],
+            dependencies: [
+              { name: "express", version: "^5.0.0", type: "runtime" as const, purpose: "HTTP server" },
+              { name: "react", version: "^18.0.0", type: "runtime" as const, purpose: "Frontend" },
+            ],
+            deploymentPlan: { platform: "Node.js", strategy: "direct" as const, stages: ["build", "deploy"], envVars: ["DATABASE_URL", "JWT_SECRET"], buildCommand: "pnpm build", startCommand: "node dist/index.js", healthCheckPath: "/health" },
+            developmentRoadmap: [{ phase: 1, name: "Foundation", description: "Project setup", tasks: ["Initialize", "Configure"], deliverables: ["Working dev env"], estimatedHours: 4 }],
+            understanding: fallbackUnderstanding,
+            generatedAt: new Date().toISOString(),
+            version: 1,
+          };
         }
+
+        // Step B: Persist spec to DB (non-fatal)
+        await saveSpec(userId, spec).catch(err =>
+          console.warn("[ExecutionEngine] saveSpec failed (non-fatal):", (err as Error).message),
+        );
+
+        // Step C: Generate ALL project files to disk.
+        // Pass no client signal — file generation must complete even if the client
+        // disconnects. Individual LLM calls have their own per-call timeout.
+        const genResult = await generateAllProjectFiles(spec, conversationId, send, undefined);
+        generatedFiles = genResult.files;
+
+        console.log(
+          `[ExecutionEngine] Stage 2 complete: ${genResult.files.length} files · ` +
+          `${(genResult.totalBytes / 1024).toFixed(1)} KB → ${genResult.projectDir}`,
+        );
       } catch (err) {
         console.warn("[ExecutionEngine] Stage 2 error (continuing):", (err as Error).message.slice(0, 120));
-        // If spec was built but file gen failed, keep whatever was partially written
+        // Emergency fallback: write at least scaffold files so the pipeline can continue
         if (spec && generatedFiles.length === 0) {
           generatedFiles = await generateCoreFiles(spec, conversationId).catch(() => []);
         }
