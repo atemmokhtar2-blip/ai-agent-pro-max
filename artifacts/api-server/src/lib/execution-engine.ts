@@ -578,6 +578,409 @@ async function generateCoreFiles(
   }
 }
 
+// ── LLM call for file generation ──────────────────────────────────────────────
+
+async function callLLMForFileGeneration(
+  systemPrompt: string,
+  userPrompt: string,
+  signal?: AbortSignal,
+): Promise<string> {
+  const apiKey = process.env["OPENROUTER_API_KEY"];
+  if (!apiKey) throw new Error("OPENROUTER_API_KEY not set");
+
+  const models = [
+    "moonshotai/kimi-k2",
+    "deepseek/deepseek-chat-v3-0324",
+    "qwen/qwen-2.5-coder-32b-instruct",
+    "openai/gpt-4o-mini",
+  ];
+
+  for (const model of models) {
+    try {
+      const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+          "X-Title": "AI Agent File Generator",
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
+          max_tokens: 16000,
+          temperature: 0.2,
+          stream: false,
+        }),
+        signal: signal ?? AbortSignal.timeout(120_000),
+      });
+
+      if (!resp.ok) {
+        const txt = await resp.text().catch(() => "");
+        if (resp.status === 401 || resp.status === 403) throw new Error("API key invalid");
+        console.warn(`[FileGen] Model ${model} returned ${resp.status}:`, txt.slice(0, 100));
+        continue;
+      }
+
+      const data = await resp.json() as { choices?: Array<{ message?: { content?: string } }> };
+      const content = data?.choices?.[0]?.message?.content ?? "";
+      if (content.length < 20) continue;
+      return content;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("API key invalid")) throw err;
+      console.warn(`[FileGen] Model ${model} failed:`, msg.slice(0, 80));
+    }
+  }
+
+  throw new Error("All models failed for file generation");
+}
+
+// ── Parse JSON file map from LLM response ─────────────────────────────────────
+
+function extractJsonFileMap(raw: string): Record<string, string> {
+  const trimmed = raw.trim();
+
+  // Direct JSON parse
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, string>;
+    }
+  } catch { /* continue */ }
+
+  // Strip fenced code block
+  const fenced = trimmed.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "");
+  try {
+    const parsed = JSON.parse(fenced);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, string>;
+    }
+  } catch { /* continue */ }
+
+  // Extract first JSON object by brace matching
+  let depth = 0;
+  let start = -1;
+  for (let i = 0; i < trimmed.length; i++) {
+    if (trimmed[i] === "{") { if (depth === 0) start = i; depth++; }
+    else if (trimmed[i] === "}") {
+      depth--;
+      if (depth === 0 && start !== -1) {
+        try {
+          const parsed = JSON.parse(trimmed.slice(start, i + 1));
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+            return parsed as Record<string, string>;
+          }
+        } catch { /* continue */ }
+        break;
+      }
+    }
+  }
+
+  return {};
+}
+
+// ── Write a map of { relativePath → content } to disk ─────────────────────────
+
+async function writeProjectFiles(
+  projectDir: string,
+  files: Record<string, string>,
+): Promise<string[]> {
+  const written: string[] = [];
+
+  for (const [filePath, content] of Object.entries(files)) {
+    if (!filePath || typeof content !== "string") continue;
+
+    // Sanitize path — no traversal, no leading slash
+    const safe = filePath.replace(/\.\.[/\\]/g, "").replace(/^[/\\]+/, "").trim();
+    if (!safe || safe.length === 0) continue;
+
+    const fullPath = path.join(projectDir, safe);
+
+    // Ensure the resolved path stays inside projectDir
+    if (!fullPath.startsWith(projectDir + path.sep) && fullPath !== projectDir) continue;
+
+    await fs.mkdir(path.dirname(fullPath), { recursive: true });
+    await fs.writeFile(fullPath, content, "utf8");
+    written.push(safe);
+  }
+
+  return written;
+}
+
+// ── Verify every written file is readable and measure size ────────────────────
+
+async function verifyProjectFiles(
+  projectDir: string,
+  files: string[],
+): Promise<{ count: number; totalBytes: number; verified: string[]; missing: string[] }> {
+  const verified: string[] = [];
+  const missing: string[] = [];
+  let totalBytes = 0;
+
+  for (const file of files) {
+    const fullPath = path.join(projectDir, file);
+    try {
+      const stat = await fs.stat(fullPath);
+      totalBytes += stat.size;
+      verified.push(file);
+    } catch {
+      missing.push(file);
+    }
+  }
+
+  return { count: verified.length, totalBytes, verified, missing };
+}
+
+// ── Create directory tree from spec.folderStructure ───────────────────────────
+
+async function createFolderTree(
+  nodes: ExecutionSpec["folderStructure"],
+  base: string,
+): Promise<void> {
+  for (const node of nodes) {
+    const nodePath = path.join(base, node.name);
+    if (node.type === "dir") {
+      await fs.mkdir(nodePath, { recursive: true });
+      if (node.children?.length) await createFolderTree(node.children, nodePath);
+    }
+  }
+}
+
+// ── Master file generator ─────────────────────────────────────────────────────
+// Orchestrates: scaffold → backend LLM → frontend LLM → verify
+
+async function generateAllProjectFiles(
+  spec: ExecutionSpec,
+  conversationId: string,
+  send: SendFn,
+  signal?: AbortSignal,
+): Promise<{ files: string[]; totalBytes: number; projectDir: string }> {
+  const projectDir = path.join(PROJECT_DIR_BASE, conversationId);
+  await fs.mkdir(projectDir, { recursive: true });
+
+  const allFiles: string[] = [];
+
+  // ── 1. Create folder structure from spec ────────────────────────────────────
+  if (spec.folderStructure.length > 0) {
+    await createFolderTree(spec.folderStructure, projectDir).catch(() => {});
+  }
+
+  // Ensure standard directories always exist
+  const stdDirs = [
+    "src", "src/components", "src/pages", "src/hooks", "src/utils", "src/types", "src/lib",
+    "server", "server/routes", "server/middleware", "server/db", "server/lib",
+    "public", "assets", "config",
+  ];
+  for (const dir of stdDirs) {
+    await fs.mkdir(path.join(projectDir, dir), { recursive: true }).catch(() => {});
+  }
+
+  // ── 2. Write core scaffold files (package.json, README, tsconfig, .env) ──────
+  console.log("[FileGen] Writing config/scaffold files…");
+  const coreFiles = await generateCoreFiles(spec, conversationId);
+  allFiles.push(...coreFiles);
+
+  // ── 3. Derive stack flags ────────────────────────────────────────────────────
+  const isTS      = spec.techStack.some(t => /typescript/i.test(t));
+  const isReact   = spec.techStack.some(t => /react/i.test(t));
+  const isTW      = spec.techStack.some(t => /tailwind/i.test(t));
+  const isExpress = spec.techStack.some(t => /express/i.test(t));
+  const isDrizzle = spec.techStack.some(t => /drizzle/i.test(t));
+  const ext       = isTS ? "ts" : "js";
+  const rExt      = isReact && isTS ? "tsx" : isReact ? "jsx" : ext;
+
+  const needsBackend  = spec.understanding?.backend?.required !== false;
+  const needsFrontend = spec.understanding?.frontend?.required !== false;
+
+  // ── 4. Generate backend source files via LLM ─────────────────────────────────
+  if (needsBackend && !signal?.aborted) {
+    console.log("[FileGen] Generating backend source files via LLM…");
+
+    const schemaLines = spec.dbSchema.slice(0, 8).map(t =>
+      `  ${t.name}: { ${t.columns.slice(0, 6).map(c => `${c.name}: ${c.type}${c.primaryKey ? " PK" : ""}${c.nullable ? " NULL" : " NOT NULL"}`).join(", ")} }`,
+    ).join("\n");
+
+    const contractLines = spec.apiContracts.slice(0, 12).map(c =>
+      `  ${c.method} ${c.path} → ${c.description}${c.requiresAuth ? " [auth]" : ""}`,
+    ).join("\n");
+
+    const featureLines = spec.features
+      .filter(f => ["backend", "database", "auth"].includes(f.category))
+      .slice(0, 6)
+      .map(f => `  - ${f.name}: ${f.description}`)
+      .join("\n");
+
+    const backendSys = `You are an expert backend engineer generating a complete, production-ready Node.js/Express project.
+
+Return ONLY a single valid JSON object. Keys are relative file paths, values are the complete file content as a string.
+No prose, no markdown, no explanation — ONLY the JSON object starting with { and ending with }.
+
+Every file must have real, complete, working code. No TODOs. No placeholders. No "coming soon".`;
+
+    const backendUser = `Generate ALL backend source files for this project.
+
+PROJECT: ${spec.projectType}
+SUMMARY: ${spec.summary.slice(0, 200)}
+TECH STACK: ${spec.techStack.join(", ")}
+
+DATABASE SCHEMA:
+${schemaLines || "  No DB tables defined — use in-memory storage."}
+
+API ENDPOINTS:
+${contractLines || "  No contracts defined — implement CRUD for main entities."}
+
+BACKEND FEATURES:
+${featureLines || "  - Standard CRUD API\n  - User authentication"}
+
+Required files to generate (ALL of them, complete implementations):
+- "server/index.${ext}" — Express server entry, listens on process.env.PORT ?? 3000, middleware, starts server
+- "server/app.${ext}" — Express app setup: cors, json parser, route mounting, error handler
+- "server/routes/index.${ext}" — Aggregates all routers: auth, and one per API group
+- "server/routes/auth.${ext}" — POST /auth/register, POST /auth/login, POST /auth/logout, POST /auth/refresh
+${spec.apiContracts.slice(0, 4).filter(c => !c.path.includes("auth")).map(c => {
+  const seg = c.path.split("/").filter(Boolean)[2] ?? "api";
+  return `- "server/routes/${seg}.${ext}" — ${c.method} ${c.path}: ${c.description}`;
+}).join("\n")}
+- "server/middleware/auth.${ext}" — JWT verify middleware, sets req.user
+- "server/middleware/validate.${ext}" — Zod body/query validation middleware
+- "server/middleware/error.${ext}" — Global Express error handler, returns JSON
+- "server/db/index.${ext}" — ${isDrizzle ? "Drizzle ORM connection pool using DATABASE_URL env var" : "Database connection (use DATABASE_URL env var)"}
+${spec.dbSchema.length > 0 ? `- "server/db/schema.${ext}" — ${isDrizzle ? "Drizzle ORM" : "SQL"} schema for all tables: ${spec.dbSchema.map(t => t.name).join(", ")}` : ""}
+- "server/lib/auth.${ext}" — JWT sign/verify helpers, password hash/compare with bcrypt
+- "server/lib/logger.${ext}" — Pino or console logger
+- "server/types.${ext}" — Shared TypeScript interfaces/types for all entities
+
+Rules:
+- ${isTS ? "TypeScript with strict types — include all type imports" : "Modern ESM JavaScript"}
+- All imports use ESM (import/export)
+- Use environment variables for DATABASE_URL, JWT_SECRET, PORT
+- Handle errors with try/catch, return proper HTTP status codes
+- Include JSDoc comments on exported functions`;
+
+    try {
+      const raw = await callLLMForFileGeneration(backendSys, backendUser, signal);
+      const filesMap = extractJsonFileMap(raw);
+      const count = Object.keys(filesMap).length;
+
+      if (count > 0) {
+        const written = await writeProjectFiles(projectDir, filesMap);
+        allFiles.push(...written);
+        console.log(`[FileGen] Backend: wrote ${written.length} files`);
+      } else {
+        console.warn("[FileGen] Backend LLM returned no parseable files — keeping scaffolds");
+      }
+    } catch (err) {
+      console.warn("[FileGen] Backend generation error:", (err as Error).message.slice(0, 100));
+    }
+  }
+
+  // ── 5. Generate frontend source files via LLM ─────────────────────────────────
+  if (needsFrontend && isReact && !signal?.aborted) {
+    console.log("[FileGen] Generating frontend source files via LLM…");
+
+    const pageLines = spec.pages.slice(0, 8).map(p =>
+      `  - ${p.name} (route: ${p.route}): ${p.description}${p.requiresAuth ? " [requires auth]" : ""}`,
+    ).join("\n");
+
+    const compLines = spec.components.slice(0, 10).map(c =>
+      `  - ${c.name} at ${c.filePath}: ${c.description}`,
+    ).join("\n");
+
+    const frontendSys = `You are an expert React/TypeScript frontend engineer generating a complete, production-ready SPA.
+
+Return ONLY a single valid JSON object. Keys are relative file paths, values are the complete file content as a string.
+No prose, no markdown, no explanation — ONLY the JSON object starting with { and ending with }.
+
+Every file must have real, complete, working JSX/TSX code with proper UI. No TODOs. No placeholders.`;
+
+    const frontendUser = `Generate ALL frontend source files for this project.
+
+PROJECT: ${spec.projectType}
+SUMMARY: ${spec.summary.slice(0, 200)}
+TECH STACK: ${spec.techStack.join(", ")}
+STYLING: ${isTW ? "Tailwind CSS utility classes" : "CSS modules / inline styles"}
+
+PAGES:
+${pageLines || "  - Home page (/)"}
+
+COMPONENTS:
+${compLines || "  - Basic layout components"}
+
+Required files to generate (ALL of them, complete real implementations):
+- "index.html" — HTML entry with <div id="root">, import main.${rExt}
+- "src/main.${rExt}" — ReactDOM.createRoot, render App, import CSS
+- "src/App.${rExt}" — App component with ${spec.pages.length > 0 ? `routes for: ${spec.pages.map(p => p.route).join(", ")}` : "basic routing"}
+- "src/index.css" — Global styles${isTW ? ", Tailwind @tailwind directives" : ""}
+${spec.pages.slice(0, 6).map(p => `- "src/pages/${p.name.replace(/\s+/g, "")}Page.${rExt}" — ${p.description} (route: ${p.route})`).join("\n")}
+- "src/components/Layout.${rExt}" — Main layout with navbar, sidebar if needed, children slot
+- "src/components/Navbar.${rExt}" — Navigation bar with links to all pages${spec.understanding?.auth?.required ? ", login/logout" : ""}
+${spec.components.slice(0, 4).map(c => `- "${c.filePath}" — ${c.description}`).join("\n")}
+- "src/lib/api.${ext}" — Fetch wrapper for /api/* endpoints, includes auth token header
+- "src/hooks/useAuth.${ext}" — Auth state hook: user, login(), logout(), isAuthenticated
+- "src/types/index.${ext}" — TypeScript interfaces for all API response types
+${isTW ? `- "tailwind.config.${ext}" — Tailwind config with content paths
+- "postcss.config.${ext}" — PostCSS with tailwindcss and autoprefixer` : ""}
+- "vite.config.${ext}" — Vite config: react plugin, proxy /api → http://localhost:3000
+
+Rules:
+- ${isTS ? "TypeScript with proper React types (React.FC, etc.)" : "Modern JSX JavaScript"}
+- ${isTW ? "Use Tailwind utility classes for all styling — make it look professional and modern" : "Use clean CSS"}
+- Use wouter or react-router-dom for client-side routing
+- All components must render real UI — not just "coming soon" text
+- Include proper HTML structure, semantic elements
+- ${spec.understanding?.auth?.required ? "Include login/register forms and protected route logic" : ""}`;
+
+    try {
+      const raw = await callLLMForFileGeneration(frontendSys, frontendUser, signal);
+      const filesMap = extractJsonFileMap(raw);
+      const count = Object.keys(filesMap).length;
+
+      if (count > 0) {
+        const written = await writeProjectFiles(projectDir, filesMap);
+        allFiles.push(...written);
+        console.log(`[FileGen] Frontend: wrote ${written.length} files`);
+      } else {
+        console.warn("[FileGen] Frontend LLM returned no parseable files");
+      }
+    } catch (err) {
+      console.warn("[FileGen] Frontend generation error:", (err as Error).message.slice(0, 100));
+    }
+  }
+
+  // ── 6. Write gitignore if missing ────────────────────────────────────────────
+  const gitignorePath = path.join(projectDir, ".gitignore");
+  try {
+    await fs.access(gitignorePath);
+  } catch {
+    await fs.writeFile(gitignorePath, [
+      "node_modules/", "dist/", ".env", "*.log", ".DS_Store", "coverage/",
+    ].join("\n") + "\n");
+    allFiles.push(".gitignore");
+  }
+
+  // ── 7. Verify all files on disk ───────────────────────────────────────────────
+  const unique = [...new Set(allFiles)];
+  const verification = await verifyProjectFiles(projectDir, unique);
+
+  console.log(
+    `[FileGen] ✓ ${verification.count} files · ${(verification.totalBytes / 1024).toFixed(1)} KB` +
+    (verification.missing.length > 0 ? ` · ${verification.missing.length} missing` : ""),
+  );
+
+  if (verification.missing.length > 0) {
+    console.warn("[FileGen] Missing files:", verification.missing.slice(0, 10).join(", "));
+  }
+
+  return {
+    files: verification.verified,
+    totalBytes: verification.totalBytes,
+    projectDir,
+  };
+}
+
 async function probeApiServer(): Promise<{ ok: boolean; detail: string; latencyMs: number }> {
   const targets = [
     "http://localhost:8080/health",
@@ -1153,7 +1556,7 @@ export class ExecutionService {
       send({ type: "exec_stage_complete", stage: 1, duration: Date.now() - t });
     }
 
-    // ── Stage 2: Generating — buildSpec via LLM + save to DB + scaffold files ──
+    // ── Stage 2: Generating — buildSpec via LLM + write ALL project files to disk ─
     if (signal?.aborted) return;
     {
       const stage2 = EXEC_STAGES.find(s => s.id === 2)!;
@@ -1161,16 +1564,30 @@ export class ExecutionService {
       const t2 = Date.now();
 
       try {
+        // Step A: Build spec via LLM (structured understanding → ExecutionSpec)
         spec = await buildSpec(conversationId, understanding!, signal);
+
         if (!signal?.aborted && spec) {
+          // Step B: Persist spec to DB (non-fatal if it fails)
           await saveSpec(userId, spec).catch(err =>
             console.warn("[ExecutionEngine] saveSpec failed (non-fatal):", (err as Error).message),
           );
-          generatedFiles = await generateCoreFiles(spec, conversationId);
-          console.log(`[ExecutionEngine] Generated ${generatedFiles.length} scaffold files in /tmp/projects/${conversationId}`);
+
+          // Step C: Generate ALL project files to disk (LLM → write → verify)
+          const genResult = await generateAllProjectFiles(spec, conversationId, send, signal);
+          generatedFiles = genResult.files;
+
+          console.log(
+            `[ExecutionEngine] Stage 2 complete: ${genResult.files.length} files · ` +
+            `${(genResult.totalBytes / 1024).toFixed(1)} KB → ${genResult.projectDir}`,
+          );
         }
       } catch (err) {
-        console.warn("[ExecutionEngine] Stage 2 LLM failed (continuing with simulation):", (err as Error).message);
+        console.warn("[ExecutionEngine] Stage 2 error (continuing):", (err as Error).message.slice(0, 120));
+        // If spec was built but file gen failed, keep whatever was partially written
+        if (spec && generatedFiles.length === 0) {
+          generatedFiles = await generateCoreFiles(spec, conversationId).catch(() => []);
+        }
       }
 
       if (signal?.aborted) return;
