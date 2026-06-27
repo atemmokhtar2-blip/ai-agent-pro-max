@@ -106,7 +106,7 @@ router.post("/health-check", requireRole("admin"), async (_req, res) => {
 
 router.post("/:slug/enable", requireRole("admin"), async (req, res) => {
   try {
-    await providerManager.enableProvider(req.params["slug"]!);
+    await providerManager.enableProvider(String(req.params["slug"]));
     res.json({ ok: true });
   } catch (err) {
     res.status(400).json({ ok: false, error: (err as Error).message });
@@ -117,7 +117,7 @@ router.post("/:slug/enable", requireRole("admin"), async (req, res) => {
 
 router.post("/:slug/disable", requireRole("admin"), async (req, res) => {
   try {
-    await providerManager.disableProvider(req.params["slug"]!);
+    await providerManager.disableProvider(String(req.params["slug"]));
     res.json({ ok: true });
   } catch (err) {
     res.status(400).json({ ok: false, error: (err as Error).message });
@@ -133,7 +133,7 @@ const strategySchema = z.object({
 router.post("/:slug/strategy", requireRole("admin"), validateBody(strategySchema), async (req, res) => {
   try {
     const { strategy } = req.body as { strategy: RoutingStrategy };
-    await providerManager.updateRoutingStrategy(req.params["slug"]!, strategy);
+    await providerManager.updateRoutingStrategy(String(req.params["slug"]), strategy);
     res.json({ ok: true });
   } catch (err) {
     res.status(400).json({ ok: false, error: (err as Error).message });
@@ -144,7 +144,7 @@ router.post("/:slug/strategy", requireRole("admin"), validateBody(strategySchema
 
 router.post("/:slug/test", async (req, res) => {
   try {
-    const result = await providerManager.testProvider(req.params["slug"]!);
+    const result = await providerManager.testProvider(String(req.params["slug"]));
     res.json({ ok: true, data: result });
   } catch (err) {
     res.status(500).json({ ok: false, error: (err as Error).message });
@@ -155,8 +155,9 @@ router.post("/:slug/test", async (req, res) => {
 
 router.get("/:slug/keys", async (req, res) => {
   try {
+    const slug = String(req.params["slug"]);
     const report  = providerManager.getHealthReport();
-    const provider = report.providers.find(p => p.slug === req.params["slug"]);
+    const provider = report.providers.find(p => p.slug === slug);
     if (!provider) return res.status(404).json({ ok: false, error: "Provider not found" });
     return res.json({ ok: true, data: provider.keys });
   } catch (err) {
@@ -174,7 +175,7 @@ const addKeySchema = z.object({
 router.post("/:slug/keys", requireRole("admin"), validateBody(addKeySchema), async (req, res) => {
   try {
     const { name, apiKey } = req.body as { name: string; apiKey: string };
-    const id = await providerManager.addKey(req.params["slug"]!, name, apiKey);
+    const id = await providerManager.addKey(String(req.params["slug"]), name, apiKey);
     res.json({ ok: true, data: { id } });
   } catch (err) {
     res.status(400).json({ ok: false, error: (err as Error).message });
@@ -185,7 +186,7 @@ router.post("/:slug/keys", requireRole("admin"), validateBody(addKeySchema), asy
 
 router.post("/:slug/keys/:id/enable", requireRole("admin"), async (req, res) => {
   try {
-    await providerManager.enableKey(req.params["id"]!);
+    await providerManager.enableKey(String(req.params["id"]));
     res.json({ ok: true });
   } catch (err) {
     res.status(400).json({ ok: false, error: (err as Error).message });
@@ -196,7 +197,7 @@ router.post("/:slug/keys/:id/enable", requireRole("admin"), async (req, res) => 
 
 router.post("/:slug/keys/:id/disable", requireRole("admin"), async (req, res) => {
   try {
-    await providerManager.disableKey(req.params["id"]!);
+    await providerManager.disableKey(String(req.params["id"]));
     res.json({ ok: true });
   } catch (err) {
     res.status(400).json({ ok: false, error: (err as Error).message });
@@ -210,7 +211,7 @@ const rotateKeySchema = z.object({ newApiKey: z.string().min(8) });
 router.post("/:slug/keys/:id/rotate", requireRole("admin"), validateBody(rotateKeySchema), async (req, res) => {
   try {
     const { newApiKey } = req.body as { newApiKey: string };
-    await providerManager.rotateKey(req.params["id"]!, newApiKey);
+    await providerManager.rotateKey(String(req.params["id"]), newApiKey);
     res.json({ ok: true });
   } catch (err) {
     res.status(400).json({ ok: false, error: (err as Error).message });
@@ -221,7 +222,7 @@ router.post("/:slug/keys/:id/rotate", requireRole("admin"), validateBody(rotateK
 
 router.delete("/:slug/keys/:id", requireRole("admin"), async (req, res) => {
   try {
-    await providerManager.deleteKey(req.params["id"]!);
+    await providerManager.deleteKey(String(req.params["id"]));
     res.json({ ok: true });
   } catch (err) {
     res.status(400).json({ ok: false, error: (err as Error).message });
@@ -232,7 +233,7 @@ router.delete("/:slug/keys/:id", requireRole("admin"), async (req, res) => {
 
 router.post("/:slug/keys/:id/test", async (req, res) => {
   try {
-    const result = await providerManager.testKey(req.params["id"]!);
+    const result = await providerManager.testKey(String(req.params["id"]));
     res.json({ ok: true, data: result });
   } catch (err) {
     res.status(500).json({ ok: false, error: (err as Error).message });

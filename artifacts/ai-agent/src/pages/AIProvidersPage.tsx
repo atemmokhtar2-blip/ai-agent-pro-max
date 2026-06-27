@@ -136,7 +136,7 @@ function AddKeyDialog({ slug, onAdded }: { slug: string; onAdded: () => void }) 
 
   const qc = useQueryClient();
   const add = useMutation({
-    mutationFn: () => apiFetch(`${BASE}/${slug}/keys`, { method: "POST", data: { name, apiKey } }),
+    mutationFn: () => apiFetch(`${BASE}/${slug}/keys`, { method: "POST", body: JSON.stringify({ name, apiKey }) }),
     onSuccess: () => {
       toast.success("API key added");
       setOpen(false); setName(""); setApiKey("");
@@ -189,7 +189,7 @@ function RotateKeyDialog({ slug, keyId, keyName }: { slug: string; keyId: string
   const [show, setShow] = useState(false);
   const qc = useQueryClient();
   const rotate = useMutation({
-    mutationFn: () => apiFetch(`${BASE}/${slug}/keys/${keyId}/rotate`, { method: "POST", data: { newApiKey: val } }),
+    mutationFn: () => apiFetch(`${BASE}/${slug}/keys/${keyId}/rotate`, { method: "POST", body: JSON.stringify({ newApiKey: val }) }),
     onSuccess: () => { toast.success("Key rotated"); setOpen(false); setVal(""); void qc.invalidateQueries({ queryKey: ["ai-providers-health"] }); },
     onError: (e) => toast.error((e as Error).message),
   });
@@ -303,7 +303,7 @@ function ProviderCard({ p }: { p: ProviderHealthReport }) {
   });
 
   const setStrategy = useMutation({
-    mutationFn: (strategy: RoutingStrategy) => apiFetch(`${BASE}/${p.slug}/strategy`, { method: "POST", data: { strategy } }),
+    mutationFn: (strategy: RoutingStrategy) => apiFetch(`${BASE}/${p.slug}/strategy`, { method: "POST", body: JSON.stringify({ strategy }) }),
     onSuccess: () => { toast.success("Routing strategy updated"); void qc.invalidateQueries({ queryKey: ["ai-providers-health"] }); },
     onError: (e) => toast.error((e as Error).message),
   });

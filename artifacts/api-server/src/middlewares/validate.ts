@@ -6,34 +6,37 @@
  */
 
 import type { Request, Response, NextFunction } from "express";
-import { z } from "zod";
 
-export function validateBody<T extends z.ZodTypeAny>(schema: T) {
+interface SafeParseSchema {
+  safeParse(data: unknown): { success: boolean; error?: { format(): unknown }; data?: unknown };
+}
+
+export function validateBody(schema: SafeParseSchema) {
   return (req: Request, res: Response, next: NextFunction): void => {
     const result = schema.safeParse(req.body);
     if (!result.success) {
       res.status(400).json({
         error: "Validation failed",
-        details: result.error.format(),
+        details: result.error?.format(),
       });
       return;
     }
-    req.body = result.data as z.infer<T>;
+    req.body = result.data;
     next();
   };
 }
 
-export function validateQuery<T extends z.ZodTypeAny>(schema: T) {
+export function validateQuery(schema: SafeParseSchema) {
   return (req: Request, res: Response, next: NextFunction): void => {
     const result = schema.safeParse(req.query);
     if (!result.success) {
       res.status(400).json({
         error: "Query validation failed",
-        details: result.error.format(),
+        details: result.error?.format(),
       });
       return;
     }
-    (req as Request & { validatedQuery: z.infer<T> }).validatedQuery = result.data;
+    (req as Request & { validatedQuery: unknown }).validatedQuery = result.data;
     next();
   };
 }

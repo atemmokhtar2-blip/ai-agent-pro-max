@@ -33,6 +33,51 @@ import { encryptKey, decryptKey, keyPrefix } from "./key-vault.js";
 import { selectKey, advanceRR } from "./load-balancer.js";
 import { HealthMonitor } from "./health-monitor.js";
 
+// ── Token optimization ─────────────────────────────────────────────────────────
+//
+// Approximate token count: 1 token ≈ 4 characters (conservative for all models).
+// Context window is capped at 100k tokens to stay within all provider limits.
+// System messages are always preserved; oldest conversation turns are dropped first.
+
+const APPROX_CHARS_PER_TOKEN   = 4;
+const MAX_CONTEXT_TOKENS        = 100_000;  // conservative cross-provider cap
+const OUTPUT_RESERVE_TOKENS     = 12_000;   // reserve for model output
+
+function approxTokens(text: string): number {
+  return Math.ceil(text.length / APPROX_CHARS_PER_TOKEN);
+}
+
+function truncateMessages(messages: LLMMessage[], requestedMaxTokens: number): LLMMessage[] {
+  // Budget = context window minus the larger of requested output or default reserve
+  const reserve  = Math.max(requestedMaxTokens, OUTPUT_RESERVE_TOKENS);
+  const budget   = Math.max(4_000, MAX_CONTEXT_TOKENS - reserve);
+
+  // Separate system messages (always kept) from conversation turns
+  const system   = messages.filter(m => m.role === "system");
+  const turns    = messages.filter(m => m.role !== "system");
+
+  // Count fixed system cost
+  let used = system.reduce((acc, m) => acc + approxTokens(m.content), 0);
+
+  // Add turns from newest to oldest (keep as many recent turns as fit)
+  const kept: LLMMessage[] = [];
+  for (let i = turns.length - 1; i >= 0; i--) {
+    const cost = approxTokens(turns[i]!.content);
+    if (used + cost > budget) break;
+    kept.unshift(turns[i]!);
+    used += cost;
+  }
+
+  const result = [...system, ...kept];
+
+  if (result.length < messages.length) {
+    const dropped = messages.length - result.length;
+    console.warn(`[ProviderManager] Token optimization: dropped ${dropped} oldest message(s) to fit context budget (${used} tokens used, budget ${budget})`);
+  }
+
+  return result;
+}
+
 import { openRouterAdapter } from "./adapters/openrouter.js";
 import { geminiAdapter      } from "./adapters/gemini.js";
 import { groqAdapter        } from "./adapters/groq.js";
@@ -182,6 +227,11 @@ export class ProviderManager {
     const taskType  = options.taskType ?? "general";
     const providers = this.orderedProviders();
 
+    // Token optimization: truncate message history to stay within provider limits.
+    // Each provider has a different context window; we truncate conservatively so
+    // the output budget (maxTokens) always fits inside the context window.
+    const optimized = truncateMessages(messages, options.maxTokens ?? 8_000);
+
     let totalRetries = 0;
     const triedKeys  = new Set<string>();
 
@@ -209,7 +259,7 @@ export class ProviderManager {
         const model = options.model ?? adapter.defaultModels[taskType];
 
         try {
-          const result = await adapter.complete(messages, { ...options, model }, plainKey);
+          const result = await adapter.complete(optimized, { ...options, model }, plainKey);
           const latencyMs = Date.now() - t0;
 
           // Update key stats
@@ -287,15 +337,19 @@ export class ProviderManager {
             break;
           }
 
-          // Rate limited → wait, then retry same key
+          // Rate limited → exponential backoff, then retry same key
           if (pe.kind === "rate_limited") {
-            await new Promise(r => setTimeout(r, pe.waitMs));
+            const backoffMs = Math.min(30_000, pe.waitMs * Math.pow(2, attempts));
+            console.warn(`[ProviderManager] Rate limited — backing off ${backoffMs}ms (attempt ${attempts + 1})`);
+            await new Promise(r => setTimeout(r, backoffMs));
             totalRetries++;
             attempts++;
             continue;
           }
 
-          // Timeout / network → switch to next key within provider
+          // Timeout / network → exponential backoff, then switch to next key
+          const backoffMs = Math.min(8_000, 500 * Math.pow(2, attempts));
+          if (backoffMs > 500) await new Promise(r => setTimeout(r, backoffMs));
           totalRetries++;
           attempts++;
           void this.flushStats(provider, key);
@@ -629,46 +683,74 @@ export class ProviderManager {
   }
 
   // ── Seed env var keys (only if no DB key exists for that provider) ──────────
+  //
+  // Discovers keys from environment variables automatically.
+  // Supports both single-key and multi-key formats:
+  //   OPENROUTER_API_KEY          → single key named "env-var"
+  //   OPENROUTER_API_KEY_1        → multiple keys named "env-var-1", "env-var-2", ...
+  //   OPENROUTER_API_KEY_2
+  //   ...
+  //
+  // Scanning stops at the first missing numbered suffix (no gaps required).
+  // No code changes are needed when adding more keys — just add the env var.
 
   private seedEnvKeys(): void {
-    const envMap: Record<string, string | undefined> = {
-      openrouter: process.env["OPENROUTER_API_KEY"],
-      gemini:     process.env["GEMINI_API_KEY"],
-      groq:       process.env["GROQ_API_KEY"],
-      cloudflare: process.env["CLOUDFLARE_API_KEY"],
-      mistral:    process.env["MISTRAL_API_KEY"],
+    const slugPrefixMap: Record<string, string> = {
+      openrouter: "OPENROUTER_API_KEY",
+      gemini:     "GEMINI_API_KEY",
+      groq:       "GROQ_API_KEY",
+      cloudflare: "CLOUDFLARE_API_KEY",
+      mistral:    "MISTRAL_API_KEY",
     };
 
-    for (const [slug, plainKey] of Object.entries(envMap)) {
-      if (!plainKey) continue;
+    for (const [slug, envPrefix] of Object.entries(slugPrefixMap)) {
       const p = this.providers.get(slug);
       if (!p) continue;
-      if (p.keys.length > 0) continue;  // already has DB keys
+      if (p.keys.length > 0) continue; // already has DB keys — skip
 
-      const id           = genId();
-      const keyEncrypted = encryptKey(plainKey);
-      const prefix       = keyPrefix(plainKey);
+      // Collect all keys for this provider from env
+      const discovered: { name: string; plainKey: string }[] = [];
 
-      const runtime: RuntimeKeyState = {
-        id, providerSlug: slug, name: "env-var",
-        keyEncrypted, keyPrefix: prefix,
-        enabled: true, status: "active",
-        totalRequests: 0, successCount: 0, failureCount: 0,
-        consecutiveFailures: 0, avgResponseTimeMs: 0,
-      };
-      p.keys.push(runtime);
+      // Single key (no suffix): PROVIDER_KEY
+      const single = process.env[envPrefix]?.trim();
+      if (single) discovered.push({ name: "env-var", plainKey: single });
 
-      // If this is openrouter enable it too
-      if (slug === "openrouter") p.enabled = true;
+      // Numbered keys: PROVIDER_KEY_1, PROVIDER_KEY_2, ..., PROVIDER_KEY_N
+      for (let i = 1; ; i++) {
+        const val = process.env[`${envPrefix}_${i}`]?.trim();
+        if (!val) break; // stop at first gap
+        discovered.push({ name: `env-var-${i}`, plainKey: val });
+      }
 
-      // Persist asynchronously
-      void db.insert(aiProviderKeysTable).values({
-        id, providerSlug: slug, name: "env-var",
-        keyEncrypted, keyPrefix: prefix,
-        enabled: true, status: "active",
-        totalRequests: 0, successCount: 0, failureCount: 0,
-        consecutiveFailures: 0, avgResponseTimeMs: 0,
-      }).onConflictDoNothing().catch(() => {});
+      if (discovered.length === 0) continue;
+
+      for (const { name, plainKey } of discovered) {
+        const id           = genId();
+        const keyEncrypted = encryptKey(plainKey);
+        const prefix       = keyPrefix(plainKey);
+
+        const runtime: RuntimeKeyState = {
+          id, providerSlug: slug, name,
+          keyEncrypted, keyPrefix: prefix,
+          enabled: true, status: "active",
+          totalRequests: 0, successCount: 0, failureCount: 0,
+          consecutiveFailures: 0, avgResponseTimeMs: 0,
+        };
+        p.keys.push(runtime);
+
+        // Persist to DB asynchronously
+        void db.insert(aiProviderKeysTable).values({
+          id, providerSlug: slug, name,
+          keyEncrypted, keyPrefix: prefix,
+          enabled: true, status: "active",
+          totalRequests: 0, successCount: 0, failureCount: 0,
+          consecutiveFailures: 0, avgResponseTimeMs: 0,
+        }).onConflictDoNothing().catch(() => {});
+      }
+
+      // Enable provider whenever it has at least one env key
+      p.enabled = true;
+      console.log(`[ProviderManager] Seeded ${discovered.length} env key(s) for provider '${slug}'`);
     }
   }
 

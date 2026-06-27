@@ -102,6 +102,7 @@ export interface RuntimeKeyState {
   id:                   string;
   providerSlug:         string;
   name:                 string;
+  keyEncrypted:         string;
   keyPrefix:            string;
   enabled:              boolean;
   status:               KeyStatus;

@@ -84,11 +84,11 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     { href: "/ai-engine", label: "AI Engine", icon: BrainCircuit },
     { href: "/notifications", label: "Notifications", icon: Bell },
     { href: "/control-center", label: "AI Control", icon: Cpu },
-    { href: "/ai-providers", label: "AI Providers", icon: Network },
     { href: "/settings", label: "Settings", icon: Settings },
   ];
 
   if (user?.role === "admin" || user?.role === "super_admin") {
+    navItems.push({ href: "/ai-providers", label: "AI Providers", icon: Network });
     navItems.push({ href: "/admin", label: "Admin", icon: ShieldAlert });
   }
 

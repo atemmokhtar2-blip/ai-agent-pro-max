@@ -140,7 +140,7 @@ const AIEnginePage = () => (
 );
 
 const AIProvidersPageWrapper = () => (
-  <ProtectedRoute>
+  <ProtectedRoute requireAdmin>
     <AppLayout>
       <AIProvidersPage />
     </AppLayout>
