@@ -768,7 +768,7 @@ router.get("/projects/:conversationId/files", async (req, res) => {
 </html>`);
 });
 
-// GET /ai/projects/:conversationId/files/download — JSON manifest of generated files + content
+// GET /ai/projects/:conversationId/files/download — RemoteFile[] manifest with content + metadata
 router.get("/projects/:conversationId/files/download", async (req, res) => {
   const userId = req.user!.sub;
   const { conversationId } = req.params as { conversationId: string };
@@ -782,24 +782,93 @@ router.get("/projects/:conversationId/files/download", async (req, res) => {
   if (!conv) { res.status(404).json({ error: "Conversation not found" }); return; }
 
   const projectDir = path.join(PROJECT_FILES_BASE, conversationId);
-  const manifest: Record<string, string> = {};
+  const files: Array<{ path: string; content: string; size: number; extension: string }> = [];
 
   async function readAll(dir: string, base: string): Promise<void> {
     try {
       const entries = await fs.readdir(dir, { withFileTypes: true });
       for (const entry of entries) {
         const rel = base ? `${base}/${entry.name}` : entry.name;
+        const fullPath = path.join(dir, entry.name);
         if (entry.isDirectory()) {
-          await readAll(path.join(dir, entry.name), rel);
+          await readAll(fullPath, rel);
         } else {
-          manifest[rel] = await fs.readFile(path.join(dir, entry.name), "utf8").catch(() => "");
+          const [content, stat] = await Promise.all([
+            fs.readFile(fullPath, "utf8").catch(() => ""),
+            fs.stat(fullPath).catch(() => null),
+          ]);
+          files.push({
+            path: rel,
+            content,
+            size: stat?.size ?? 0,
+            extension: path.extname(entry.name).slice(1).toLowerCase(),
+          });
         }
       }
     } catch { /* dir may not exist */ }
   }
 
   await readAll(projectDir, "");
-  res.json({ conversationId, files: manifest });
+  res.json({ conversationId, files });
+});
+
+// DELETE /ai/projects/:conversationId/files — delete a generated file
+router.delete("/projects/:conversationId/files", async (req, res) => {
+  const userId = req.user!.sub;
+  const { conversationId } = req.params as { conversationId: string };
+  const { path: filePath } = req.body as { path?: string };
+
+  if (!filePath) { res.status(400).json({ error: "path required" }); return; }
+
+  const [conv] = await db
+    .select({ id: aiConversationsTable.id })
+    .from(aiConversationsTable)
+    .where(and(eq(aiConversationsTable.id, conversationId), eq(aiConversationsTable.userId, userId)))
+    .limit(1);
+  if (!conv) { res.status(404).json({ error: "Conversation not found" }); return; }
+
+  const projectDir = path.join(PROJECT_FILES_BASE, conversationId);
+  const safe = path.normalize(filePath).replace(/^(\.\.[/\\])+/, "");
+  const full = path.join(projectDir, safe);
+  if (!full.startsWith(projectDir)) { res.status(400).json({ error: "Invalid path" }); return; }
+
+  await fs.unlink(full).catch(() => {});
+  res.json({ ok: true });
+});
+
+// POST /ai/projects/:conversationId/files/rename — rename/move a generated file
+router.post("/projects/:conversationId/files/rename", async (req, res) => {
+  const userId = req.user!.sub;
+  const { conversationId } = req.params as { conversationId: string };
+  const { oldPath, newPath } = req.body as { oldPath?: string; newPath?: string };
+
+  if (!oldPath || !newPath) { res.status(400).json({ error: "oldPath and newPath required" }); return; }
+
+  const [conv] = await db
+    .select({ id: aiConversationsTable.id })
+    .from(aiConversationsTable)
+    .where(and(eq(aiConversationsTable.id, conversationId), eq(aiConversationsTable.userId, userId)))
+    .limit(1);
+  if (!conv) { res.status(404).json({ error: "Conversation not found" }); return; }
+
+  const projectDir = path.join(PROJECT_FILES_BASE, conversationId);
+  const safeOld = path.normalize(oldPath).replace(/^(\.\.[/\\])+/, "");
+  const safeNew = path.normalize(newPath).replace(/^(\.\.[/\\])+/, "");
+  const fullOld = path.join(projectDir, safeOld);
+  const fullNew = path.join(projectDir, safeNew);
+
+  if (!fullOld.startsWith(projectDir) || !fullNew.startsWith(projectDir)) {
+    res.status(400).json({ error: "Invalid path" });
+    return;
+  }
+
+  try {
+    await fs.mkdir(path.dirname(fullNew), { recursive: true });
+    await fs.rename(fullOld, fullNew);
+    res.json({ ok: true });
+  } catch {
+    res.status(500).json({ error: "Rename failed" });
+  }
 });
 
 // GET /ai/projects/:conversationId/file/* — serve individual generated file

@@ -660,6 +660,22 @@ export function PlannerWorkspace({
   });
   const repositories = reposData?.items ?? [];
 
+  // ── Document title ───────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    const base = "AI Agent";
+    if (isStreaming) {
+      const stage = streamingStage?.name;
+      document.title = stage ? `${stage} — ${base}` : `Planning… — ${base}`;
+    } else if (phase.kind === "executing" || phase.kind === "verifying") {
+      const s = (phase as { currentStageName?: string }).currentStageName;
+      document.title = s ? `${s} — ${base}` : `Building… — ${base}`;
+    } else {
+      document.title = base;
+    }
+    return () => { document.title = base; };
+  }, [isStreaming, streamingStage, phase]);
+
   // ── Auto-scroll ─────────────────────────────────────────────────────────────
 
   const scrollToBottom = useCallback((smooth = true) => {
@@ -1052,10 +1068,23 @@ export function PlannerWorkspace({
         return (
           <>
             <UserBubble content={phase.userMessage} />
-            <ActivityBubble
-              label={currentStageName ?? "Planning your architecture…"}
-              sublabel={`${streamingStage?.id ?? 0} / ${PLANNER_STAGES.length}`}
-            />
+            {streamingContent ? (
+              <AssistantBubble>
+                <MarkdownRenderer content={streamingContent} />
+                <div className="mt-3 flex items-center gap-2 border-t border-border/20 pt-2">
+                  <span className="h-1.5 w-1.5 rounded-full bg-primary/60 animate-pulse flex-shrink-0" />
+                  <span className="text-[11px] text-muted-foreground/50 truncate">
+                    {currentStageName ?? "Planning…"}
+                    {streamingStage && ` · stage ${streamingStage.id}/${PLANNER_STAGES.length}`}
+                  </span>
+                </div>
+              </AssistantBubble>
+            ) : (
+              <ActivityBubble
+                label={currentStageName ?? "Planning your architecture…"}
+                sublabel={`${streamingStage?.id ?? 0} / ${PLANNER_STAGES.length}`}
+              />
+            )}
           </>
         );
       }

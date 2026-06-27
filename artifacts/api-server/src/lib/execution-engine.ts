@@ -1235,7 +1235,7 @@ export class ExecutionService {
         // the SSE client disconnects.
         const generator = new BatchFileGenerator(
           conversationId,
-          (data) => send(data as Record<string, unknown>),
+          (data) => send(data as unknown as ExecEvent),
         );
         const genReport = await generator.run(spec);
         generatedFiles = genReport.verificationResult.verified;
