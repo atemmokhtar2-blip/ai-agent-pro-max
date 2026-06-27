@@ -126,14 +126,6 @@ function RefreshIcon() {
   );
 }
 
-function FilesIcon() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.3">
-      <path d="M1.5 2a1 1 0 011-1h4.5l2 2H11.5a1 1 0 011 1v7a1 1 0 01-1 1H2.5a1 1 0 01-1-1V2z" />
-    </svg>
-  );
-}
-
 // ── Message footer (model badge + timing) ──────────────────────────────────────
 
 function MessageFooter({
@@ -1151,7 +1143,6 @@ export function PlannerWorkspace({
       case "verified": {
         const task = tasks.find((t) => t.id === phase.taskId);
         const blueprint = blueprintRef.current || task?.result?.content || "";
-        const effectivePreviewUrl = phase.previewUrl ?? task?.previewUrl;
         return (
           <>
             <UserBubble content={phase.userMessage} />
@@ -1176,21 +1167,11 @@ export function PlannerWorkspace({
                   phases={task?.execPhases}
                   allPassed={phase.allPassed}
                   healthReport={phase.healthReport ?? task?.healthReport}
-                  onPreview={effectivePreviewUrl
-                    ? () => window.open(effectivePreviewUrl, "_blank", "noopener,noreferrer")
-                    : () => toast.info("Preview URL not available yet")}
+                  onPreview={() => setShowFiles(true)}
                   onRetryBuild={() => handleRetryExecution(phase.taskId, blueprint)}
                   onRetryVerification={() => handleRetryVerification(phase.taskId, blueprint)}
                   onRetryPreview={() => toast.info("Restarting preview server…")}
                 />
-                {/* View generated files button */}
-                <button
-                  onClick={() => setShowFiles(true)}
-                  className="mt-2 flex items-center gap-1.5 rounded-lg border border-border/60 px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:border-primary/30 hover:bg-muted/20 transition-colors"
-                >
-                  <FilesIcon />
-                  View Generated Files
-                </button>
               </div>
             </div>
           </>

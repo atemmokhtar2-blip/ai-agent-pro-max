@@ -55,12 +55,13 @@ function RetryIcon() {
   );
 }
 
-function ExternalIcon() {
+function FolderOpenIcon() {
   return (
-    <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-      <path d="M4.5 2H2.5A1 1 0 001.5 3v6A1 1 0 002.5 10h6a1 1 0 001-1V7" />
-      <path d="M6.5 1.5h3v3" />
-      <line x1="9.5" y1="1.5" x2="5" y2="6" />
+    <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M1 3a1 1 0 011-1h3l1 1h5a1 1 0 011 1v1H1V3z" fill="currentColor" opacity="0.15"/>
+      <path d="M1 5h11l-1.2 5H2.2L1 5z" fill="currentColor" opacity="0.15"/>
+      <path d="M1 3a1 1 0 011-1h3l1 1h5a1 1 0 011 1v1H1V3z"/>
+      <path d="M1 5h11l-1.2 5H2.2L1 5z"/>
     </svg>
   );
 }
@@ -392,30 +393,29 @@ export function VerificationCard({
         />
       )}
 
-      {/* Preview button — only when all passed */}
+      {/* Browse files button — only when all passed */}
       {allPassed && (
         <div className="px-3 pb-3 pt-1">
           <button
             onClick={handlePreview}
-            disabled={previewOpened}
             className="w-full flex items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-semibold transition-all"
             style={{
               background: previewOpened
                 ? "rgb(34 197 94 / 0.1)"
-                : "linear-gradient(135deg, rgb(34 197 94 / 0.85), rgb(16 185 129 / 0.85))",
-              color: previewOpened ? "rgb(74 222 128)" : "#000",
-              boxShadow: previewOpened ? "none" : "0 2px 12px rgb(34 197 94 / 0.25)",
+                : "linear-gradient(135deg, rgb(99 102 241 / 0.85), rgb(139 92 246 / 0.85))",
+              color: previewOpened ? "rgb(74 222 128)" : "#fff",
+              boxShadow: previewOpened ? "none" : "0 2px 12px rgb(99 102 241 / 0.25)",
             }}
           >
             {previewOpened ? (
               <>
                 <CheckIcon size={12} />
-                Preview Open
+                Files Panel Open
               </>
             ) : (
               <>
-                <ExternalIcon />
-                Open Preview
+                <FolderOpenIcon />
+                Browse Generated Files
               </>
             )}
           </button>
