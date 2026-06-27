@@ -16,12 +16,32 @@ import { eq } from "drizzle-orm";
 import { decryptKey } from "../provider-manager/key-vault";
 import type { IOAuthProvider, OAuthProfile } from "./types";
 
-/** Derive the redirect URI from the environment. */
+/**
+ * Derive the public redirect URI:
+ * 1. GOOGLE_REDIRECT_URI env var  — explicit override, always wins
+ * 2. REPLIT_DOMAINS               — set by Replit in deployed (production) apps
+ *    e.g. "myapp.replit.app,myapp.replit.dev"  → pick the .replit.app one
+ * 3. REPLIT_DEV_DOMAIN            — set by Replit in the dev workspace
+ */
 function deriveRedirectUri(): string | null {
   if (process.env.GOOGLE_REDIRECT_URI) return process.env.GOOGLE_REDIRECT_URI;
+
+  // Production deployment: REPLIT_DOMAINS is a comma-separated list
+  const replitDomains = process.env.REPLIT_DOMAINS;
+  if (replitDomains) {
+    const domains = replitDomains.split(",").map((d) => d.trim()).filter(Boolean);
+    // Prefer the *.replit.app domain over *.replit.dev
+    const primary =
+      domains.find((d) => d.endsWith(".replit.app")) ??
+      domains[0];
+    if (primary) return `https://${primary}/auth/callback`;
+  }
+
+  // Dev workspace fallback
   if (process.env.REPLIT_DEV_DOMAIN) {
     return `https://${process.env.REPLIT_DEV_DOMAIN}/auth/callback`;
   }
+
   return null;
 }
 

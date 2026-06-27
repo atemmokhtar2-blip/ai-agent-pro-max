@@ -107,6 +107,13 @@ router.patch("/me/password", validateBody(changePasswordSchema), async (req, res
     return;
   }
 
+  if (!user.passwordHash) {
+    res.status(400).json({
+      error: "This account uses Google sign-in and does not have a password.",
+    });
+    return;
+  }
+
   const valid = await verifyPassword(current_password, user.passwordHash);
   if (!valid) {
     res.status(400).json({ error: "Current password is incorrect" });
