@@ -854,12 +854,8 @@ Reply with only the single word.`,
 
   if (signal.aborted) return;
 
-  // Close any remaining open stages
-  const LAST_STAGE = 7;
-  for (let s = 3; s <= LAST_STAGE; s++) {
-    // Check if stage was left open — emit stage_complete for it
-  }
-  onEvent({ type: "stage_complete", stage: LAST_STAGE });
+  // Stage 7 completion — stage_complete for whatever stage the content ended on
+  onEvent({ type: "stage_complete", stage: 7 });
 
   // ── Stage 8: Blueprint Finalization ─────────────────────────────────────────
   onEvent({ type: "stage_start", stage: 8, name: "Blueprint Finalization" });

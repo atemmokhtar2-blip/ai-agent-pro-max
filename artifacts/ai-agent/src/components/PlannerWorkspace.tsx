@@ -288,6 +288,88 @@ function AssistantBubble({
   );
 }
 
+// ── Thinking bubble — shows chain-of-thought reasoning streaming ───────────────
+
+function ThinkingBubble({
+  text,
+  model,
+  isStreaming,
+}: {
+  text: string;
+  model: string;
+  isStreaming: boolean;
+}) {
+  const [expanded, setExpanded] = useState(true);
+  const shortModel = model.split("/").pop() ?? model;
+
+  return (
+    <div className="flex gap-3 items-start">
+      <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-violet-500/10 border border-violet-500/20 mt-0.5">
+        {isStreaming ? (
+          <span className="h-2 w-2 rounded-full bg-violet-400 animate-pulse" />
+        ) : (
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="text-violet-400">
+            <path d="M6 1C3.24 1 1 3.24 1 6s2.24 5 5 5 5-2.24 5-5-2.24-5-5-5zm.5 7.5h-1v-4h1v4zm0-5.5h-1V2h1v1z" fill="currentColor"/>
+          </svg>
+        )}
+      </div>
+      <div className="flex-1 min-w-0">
+        <button
+          onClick={() => setExpanded((p) => !p)}
+          className="flex items-center gap-2 text-[11px] text-violet-400/70 hover:text-violet-300 transition-colors mb-1.5 group"
+        >
+          <span className="font-medium">
+            {isStreaming ? "Reasoning…" : "Reasoned through the problem"}
+          </span>
+          {!isStreaming && (
+            <span className="text-violet-400/40 group-hover:text-violet-300/60 transition-colors">
+              {expanded ? "▲ hide" : "▼ show"}
+            </span>
+          )}
+          {shortModel && (
+            <span className="text-[10px] text-violet-400/30 hidden sm:inline">· {shortModel}</span>
+          )}
+        </button>
+        {expanded && text && (
+          <div className="rounded-lg border border-violet-500/10 bg-violet-500/5 px-3 py-2.5 text-[12px] text-violet-200/50 leading-relaxed font-mono whitespace-pre-wrap max-h-48 overflow-y-auto">
+            {text}
+            {isStreaming && (
+              <span className="inline-block w-1 h-3 bg-violet-400/50 ml-0.5 animate-pulse align-text-bottom" />
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Model switch badge ─────────────────────────────────────────────────────────
+
+function ModelSwitchBadge({ toModel, taskType }: { toModel: string; taskType: string }) {
+  const shortModel = toModel.split("/").pop() ?? toModel;
+  const taskLabels: Record<string, string> = {
+    architecture: "Architecture",
+    technical: "APIs & Security",
+    deployment: "Deployment",
+    planning: "Planning",
+  };
+  const label = taskLabels[taskType] ?? taskType;
+
+  return (
+    <div className="flex items-center gap-2 py-1 pl-10">
+      <div className="flex items-center gap-1.5 rounded-full border border-primary/15 bg-primary/5 px-2.5 py-1 text-[10px] text-primary/50">
+        <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
+          <circle cx="4" cy="4" r="3" stroke="currentColor" strokeWidth="1" opacity="0.6"/>
+          <circle cx="4" cy="4" r="1.5" fill="currentColor" opacity="0.6"/>
+        </svg>
+        <span>{shortModel}</span>
+        <span className="opacity-40">·</span>
+        <span className="opacity-60">{label}</span>
+      </div>
+    </div>
+  );
+}
+
 // ── Activity indicator — single pulsing line showing latest status ─────────────
 
 function ActivityBubble({
@@ -610,6 +692,14 @@ export function PlannerWorkspace({
   const [streamingContent, setStreamingContent] = useState("");
   const [streamingStage, setStreamingStage] = useState<{ name: string; id: number } | null>(null);
 
+  // ── Thinking / reasoning phase state ────────────────────────────────────────
+  const [thinkingText, setThinkingText] = useState("");
+  const [thinkingModel, setThinkingModel] = useState("");
+  const [thinkingStreaming, setThinkingStreaming] = useState(false);
+
+  // ── Active model switch badge ────────────────────────────────────────────────
+  const [activeModelSwitch, setActiveModelSwitch] = useState<{ toModel: string; taskType: string } | null>(null);
+
   // ── Repository selector ─────────────────────────────────────────────────────
   const [selectedRepoId, setSelectedRepoId] = useState<string>(initialRepoId ?? "");
 
@@ -880,6 +970,10 @@ export function PlannerWorkspace({
     setExecActive(false);
     setStreamingContent("");
     setStreamingStage(null);
+    setThinkingText("");
+    setThinkingModel("");
+    setThinkingStreaming(false);
+    setActiveModelSwitch(null);
     setPhase({ kind: "idle" });
     toast.info("Generation stopped");
   }, []);
@@ -894,6 +988,10 @@ export function PlannerWorkspace({
     setIsStreaming(true);
     setStreamingContent("");
     setStreamingStage(null);
+    setThinkingText("");
+    setThinkingModel("");
+    setThinkingStreaming(false);
+    setActiveModelSwitch(null);
     userScrolledRef.current = false;
     wasFirstRef.current = isFirstMessage;
     priorMessageCountRef.current = messages.length;
@@ -922,6 +1020,23 @@ export function PlannerWorkspace({
 
     const handleEvent = (event: PlannerStreamEvent) => {
       switch (event.type) {
+        case "thinking_start":
+          setThinkingModel(event.model);
+          setThinkingStreaming(true);
+          break;
+
+        case "thinking_chunk":
+          setThinkingText((prev) => prev + event.text);
+          break;
+
+        case "thinking_complete":
+          setThinkingStreaming(false);
+          break;
+
+        case "model_switch":
+          setActiveModelSwitch({ toModel: event.toModel, taskType: event.taskType });
+          break;
+
         case "stage_start": {
           stageStart(taskId, event.stage);
           const stageMeta = PLANNER_STAGES.find((s) => s.id === event.stage);
@@ -1057,9 +1172,26 @@ export function PlannerWorkspace({
     switch (phase.kind) {
       case "streaming": {
         const currentStageName = streamingStage?.name;
+        const hasThinking = thinkingText.length > 0 || thinkingStreaming;
         return (
           <>
             <UserBubble content={phase.userMessage} />
+
+            {hasThinking && (
+              <ThinkingBubble
+                text={thinkingText}
+                model={thinkingModel}
+                isStreaming={thinkingStreaming}
+              />
+            )}
+
+            {activeModelSwitch && !thinkingStreaming && streamingContent && (
+              <ModelSwitchBadge
+                toModel={activeModelSwitch.toModel}
+                taskType={activeModelSwitch.taskType}
+              />
+            )}
+
             {streamingContent ? (
               <AssistantBubble>
                 <MarkdownRenderer content={streamingContent} />
@@ -1071,12 +1203,12 @@ export function PlannerWorkspace({
                   </span>
                 </div>
               </AssistantBubble>
-            ) : (
+            ) : !hasThinking ? (
               <ActivityBubble
                 label={currentStageName ?? "Planning your architecture…"}
                 sublabel={`${streamingStage?.id ?? 0} / ${PLANNER_STAGES.length}`}
               />
-            )}
+            ) : null}
           </>
         );
       }
