@@ -1,12 +1,13 @@
 /**
  * OAuth Provider Registry
  *
- * Extensible registry for OAuth providers. New providers (GitHub, Microsoft,
- * Discord, Apple, Facebook) register themselves here — no other files change.
+ * Extensible registry for OAuth providers. New providers register themselves
+ * here — no other backend files need to change.
  */
 
 import type { IOAuthProvider } from "./types";
 import { GoogleOAuthProvider } from "./google";
+import { GitHubOAuthProvider } from "./github";
 
 class OAuthProviderRegistry {
   private providers = new Map<string, IOAuthProvider>();
@@ -33,3 +34,4 @@ class OAuthProviderRegistry {
 export const oauthRegistry = new OAuthProviderRegistry();
 
 oauthRegistry.register(new GoogleOAuthProvider());
+oauthRegistry.register(new GitHubOAuthProvider());

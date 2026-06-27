@@ -5,7 +5,7 @@ import { Loader2, XCircle, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
 
-const SUPPORTED_PROVIDERS = ["google"] as const;
+const SUPPORTED_PROVIDERS = ["google", "github"] as const;
 
 export default function OAuthCallback() {
   const [, setLocation] = useLocation();

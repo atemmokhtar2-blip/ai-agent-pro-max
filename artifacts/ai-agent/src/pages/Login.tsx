@@ -13,11 +13,12 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
 const loginSchema = z.object({
-  email: z.string().min(1, "Email is required").email("Enter a valid email address"),
+  email:    z.string().min(1, "Email is required").email("Enter a valid email address"),
   password: z.string().min(1, "Password is required").min(8, "Password must be at least 8 characters"),
 });
-
 type LoginFormValues = z.infer<typeof loginSchema>;
+
+// ── Icons ─────────────────────────────────────────────────────────────────────
 
 function GoogleIcon({ className }: { className?: string }) {
   return (
@@ -30,6 +31,16 @@ function GoogleIcon({ className }: { className?: string }) {
   );
 }
 
+function GitHubIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className ?? "h-5 w-5"} aria-hidden="true" fill="currentColor">
+      <path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0 1 12 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/>
+    </svg>
+  );
+}
+
+// ── Field error ───────────────────────────────────────────────────────────────
+
 function FieldError({ message }: { message?: string }) {
   return (
     <AnimatePresence>
@@ -41,7 +52,7 @@ function FieldError({ message }: { message?: string }) {
           transition={{ duration: 0.15 }}
           className="text-xs text-destructive mt-1 flex items-center gap-1"
         >
-          <span className="inline-block h-1 w-1 rounded-full bg-destructive" />
+          <span className="inline-block h-1 w-1 rounded-full bg-destructive flex-shrink-0" />
           {message}
         </motion.p>
       )}
@@ -49,23 +60,75 @@ function FieldError({ message }: { message?: string }) {
   );
 }
 
+// ── Animated background ───────────────────────────────────────────────────────
+
 function AnimatedBackground() {
   return (
     <div className="fixed inset-0 -z-10 overflow-hidden">
       <div className="absolute inset-0 bg-background" />
       <div className="absolute -top-40 -right-40 h-80 w-80 rounded-full bg-primary/10 blur-3xl animate-pulse" style={{ animationDuration: "4s" }} />
-      <div className="absolute -bottom-40 -left-40 h-80 w-80 rounded-full bg-primary/8 blur-3xl animate-pulse" style={{ animationDuration: "6s", animationDelay: "1s" }} />
+      <div className="absolute -bottom-40 -left-40 h-80 w-80 rounded-full bg-primary/8 blur-3xl animate-pulse"  style={{ animationDuration: "6s", animationDelay: "1s" }} />
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-96 w-96 rounded-full bg-primary/5 blur-3xl animate-pulse" style={{ animationDuration: "8s", animationDelay: "2s" }} />
     </div>
   );
 }
 
+// ── OAuth button ──────────────────────────────────────────────────────────────
+
+type OAuthProvider = "google" | "github";
+
+interface OAuthButtonProps {
+  provider: OAuthProvider;
+  disabled: boolean;
+  loading:  boolean;
+  onClick:  () => void;
+}
+
+function OAuthButton({ provider, disabled, loading, onClick }: OAuthButtonProps) {
+  const config = {
+    google: {
+      label:   "Continue with Google",
+      loading: "Redirecting to Google…",
+      icon:    <GoogleIcon className="h-5 w-5 flex-shrink-0" />,
+      cls:     "bg-white dark:bg-white/95 text-gray-900 border-gray-200 dark:border-white/20 hover:shadow-md",
+      spinner: "text-gray-600",
+    },
+    github: {
+      label:   "Continue with GitHub",
+      loading: "Redirecting to GitHub…",
+      icon:    <GitHubIcon className="h-5 w-5 flex-shrink-0" />,
+      cls:     "bg-[#24292e] dark:bg-[#24292e] text-white border-[#24292e]/80 hover:bg-[#1c2126] hover:shadow-md",
+      spinner: "text-white/80",
+    },
+  }[provider];
+
+  return (
+    <motion.button
+      whileHover={{ scale: disabled ? 1 : 1.02, y: disabled ? 0 : -1 }}
+      whileTap={{ scale: 0.98 }}
+      transition={{ duration: 0.15 }}
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`w-full flex items-center justify-center gap-3 h-12 rounded-xl border shadow-sm font-semibold text-sm transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed ${config.cls}`}
+    >
+      {loading
+        ? <Loader2 className={`h-5 w-5 animate-spin ${config.spinner}`} />
+        : config.icon
+      }
+      <span>{loading ? config.loading : config.label}</span>
+    </motion.button>
+  );
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
+
 export default function Login() {
   const [, setLocation] = useLocation();
   const { login: authenticate, isAuthenticated } = useAuth();
-  const [showPassword, setShowPassword] = useState(false);
-  const [googleLoading, setGoogleLoading] = useState(false);
-  const [googleError, setGoogleError] = useState<string | null>(null);
+  const [showPassword,  setShowPassword]  = useState(false);
+  const [loadingOAuth,  setLoadingOAuth]  = useState<OAuthProvider | null>(null);
+  const [oauthError,    setOauthError]    = useState<string | null>(null);
   const [showEmailForm, setShowEmailForm] = useState(false);
 
   useEffect(() => {
@@ -79,45 +142,43 @@ export default function Login() {
   });
 
   const loginMutation = useLogin();
+  const { errors, isSubmitting } = form.formState;
+  const isPending = loginMutation.isPending || isSubmitting;
 
   const onSubmit = (data: LoginFormValues) => {
-    loginMutation.mutate(
-      { data },
-      {
-        onSuccess: (res) => {
-          authenticate({ access_token: res.access_token, refresh_token: res.refresh_token, token_type: res.token_type });
-          toast.success("Welcome back!");
-          setLocation("/dashboard");
-        },
-        onError: (err) => {
-          const message = (err as { data?: { error?: string } }).data?.error || "Please check your credentials and try again.";
-          toast.error("Login failed", { description: message });
-        },
-      }
-    );
+    loginMutation.mutate({ data }, {
+      onSuccess: (res) => {
+        authenticate({ access_token: res.access_token, refresh_token: res.refresh_token, token_type: res.token_type });
+        toast.success("Welcome back!");
+        setLocation("/dashboard");
+      },
+      onError: (err) => {
+        const message = (err as { data?: { error?: string } }).data?.error || "Please check your credentials and try again.";
+        toast.error("Login failed", { description: message });
+      },
+    });
   };
 
-  const handleGoogleSignIn = async () => {
-    setGoogleLoading(true);
-    setGoogleError(null);
+  const handleOAuth = async (provider: OAuthProvider) => {
+    setLoadingOAuth(provider);
+    setOauthError(null);
     try {
-      const res = await fetch("/api/v1/auth/oauth/google/authorize");
+      const res = await fetch(`/api/v1/auth/oauth/${provider}/authorize`);
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { error?: string };
-        setGoogleError(body.error ?? "Google sign-in is not available. Please try email login.");
+        setOauthError(body.error ?? `${provider === "google" ? "Google" : "GitHub"} sign-in is not available right now.`);
         return;
       }
       const { url } = (await res.json()) as { url: string };
       window.location.href = url;
     } catch {
-      setGoogleError("Network error. Please try again.");
+      setOauthError("Network error. Please try again.");
     } finally {
-      setGoogleLoading(false);
+      setLoadingOAuth(null);
     }
   };
 
-  const { errors, isSubmitting } = form.formState;
-  const isPending = loginMutation.isPending || isSubmitting;
+  const anyOAuthLoading = !!loadingOAuth;
 
   return (
     <>
@@ -132,10 +193,10 @@ export default function Login() {
         >
           {/* Glass card */}
           <div className="relative rounded-2xl border border-white/10 bg-background/60 backdrop-blur-xl shadow-2xl shadow-black/20 overflow-hidden">
-            {/* Top gradient line */}
             <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/60 to-transparent" />
 
-            <div className="px-8 pt-10 pb-8 space-y-8">
+            <div className="px-8 pt-10 pb-8 space-y-6">
+
               {/* Header */}
               <motion.div
                 initial={{ opacity: 0, y: 8 }}
@@ -146,53 +207,39 @@ export default function Login() {
                 <div className="inline-flex items-center justify-center h-12 w-12 rounded-xl bg-primary/10 border border-primary/20 mx-auto mb-1">
                   <Sparkles className="h-6 w-6 text-primary" />
                 </div>
-                <h1 className="text-2xl font-bold tracking-tight text-foreground">
-                  Welcome back
-                </h1>
-                <p className="text-sm text-muted-foreground">
-                  Sign in to continue to AI Agent
-                </p>
+                <h1 className="text-2xl font-bold tracking-tight text-foreground">Welcome back</h1>
+                <p className="text-sm text-muted-foreground">Sign in to continue to AI Agent</p>
               </motion.div>
 
-              {/* Google Button — primary action */}
+              {/* OAuth buttons */}
               <motion.div
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.15, duration: 0.35 }}
                 className="space-y-3"
               >
-                <motion.button
-                  whileHover={{ scale: googleLoading || isPending ? 1 : 1.02, y: googleLoading || isPending ? 0 : -1 }}
-                  whileTap={{ scale: 0.98 }}
-                  transition={{ duration: 0.15 }}
-                  type="button"
-                  onClick={handleGoogleSignIn}
-                  disabled={googleLoading || isPending}
-                  className="group relative w-full flex items-center justify-center gap-3 h-12 rounded-xl
-                    bg-white dark:bg-white/95 text-gray-900
-                    border border-gray-200 dark:border-white/20
-                    shadow-sm hover:shadow-md
-                    font-semibold text-sm
-                    transition-all duration-200
-                    disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  {googleLoading ? (
-                    <Loader2 className="h-5 w-5 animate-spin text-gray-600" />
-                  ) : (
-                    <GoogleIcon className="h-5 w-5 flex-shrink-0" />
-                  )}
-                  <span>{googleLoading ? "Redirecting to Google…" : "Continue with Google"}</span>
-                </motion.button>
+                <OAuthButton
+                  provider="google"
+                  loading={loadingOAuth === "google"}
+                  disabled={anyOAuthLoading || isPending}
+                  onClick={() => handleOAuth("google")}
+                />
+                <OAuthButton
+                  provider="github"
+                  loading={loadingOAuth === "github"}
+                  disabled={anyOAuthLoading || isPending}
+                  onClick={() => handleOAuth("github")}
+                />
 
                 <AnimatePresence>
-                  {googleError && (
+                  {oauthError && (
                     <motion.p
                       initial={{ opacity: 0, height: 0 }}
                       animate={{ opacity: 1, height: "auto" }}
                       exit={{ opacity: 0, height: 0 }}
                       className="text-xs text-destructive text-center px-2"
                     >
-                      {googleError}
+                      {oauthError}
                     </motion.p>
                   )}
                 </AnimatePresence>
@@ -216,7 +263,7 @@ export default function Login() {
                 <div className="flex-1 h-px bg-border/60" />
               </motion.div>
 
-              {/* Email/password form — collapsible */}
+              {/* Email / password form — collapsible */}
               <AnimatePresence>
                 {showEmailForm && (
                   <motion.div
@@ -273,7 +320,7 @@ export default function Login() {
                       <Button
                         type="submit"
                         className="w-full h-10 rounded-lg font-semibold"
-                        disabled={isPending || googleLoading}
+                        disabled={isPending || anyOAuthLoading}
                       >
                         {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                         {isPending ? "Signing in…" : "Sign In"}
@@ -297,11 +344,9 @@ export default function Login() {
               </motion.p>
             </div>
 
-            {/* Bottom gradient line */}
             <div className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-border/40 to-transparent" />
           </div>
 
-          {/* Legal note */}
           <motion.p
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
