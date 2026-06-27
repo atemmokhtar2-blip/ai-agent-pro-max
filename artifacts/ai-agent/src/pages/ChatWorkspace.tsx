@@ -139,19 +139,19 @@ function ConversationItem({ conv, isActive, isPinned, onSelect, onRename, onDele
   return (
     <div
       className={[
-        "group mx-2 mb-0.5 flex cursor-pointer items-start gap-2 rounded-lg px-3 py-2 text-sm transition-colors min-h-[2.5rem]",
-        isActive ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground",
+        "group mx-2 mb-0.5 flex cursor-pointer items-start gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors min-h-[2.25rem]",
+        isActive ? "bg-muted/70 text-foreground" : "text-muted-foreground hover:bg-muted/40 hover:text-foreground",
       ].join(" ")}
       onClick={!isEditing ? onSelect : undefined}
     >
       {/* Left indicator */}
-      <div className="flex-shrink-0 mt-0.5">
+      <div className="flex-shrink-0 mt-1">
         {isPinned && !isActive ? (
-          <span className="text-primary/60"><PinIcon filled /></span>
+          <span className="text-primary/50"><PinIcon filled /></span>
         ) : isActive ? (
-          <AIPulse size={14} color="#6366f1" active />
+          <div className="h-1.5 w-1.5 rounded-full bg-primary mt-0.5" />
         ) : (
-          <div className="h-1.5 w-1.5 rounded-full bg-muted-foreground/30 mt-1" />
+          <div className="h-1.5 w-1.5 rounded-full bg-muted-foreground/20 mt-0.5" />
         )}
       </div>
 
@@ -401,7 +401,7 @@ export default function ChatWorkspace() {
       {/* ── Sidebar ──────────────────────────────────────────────────────── */}
       <aside
         className={[
-          "flex flex-col border-r border-border bg-card",
+          "flex flex-col border-r border-border/60 bg-background",
           "absolute inset-y-0 left-0 z-30 w-72 transition-transform duration-200 ease-in-out",
           sidebarOpen ? "translate-x-0" : "-translate-x-full",
           "md:relative md:z-auto md:translate-x-0 md:transition-all md:duration-200",
@@ -410,24 +410,28 @@ export default function ChatWorkspace() {
         aria-label="Conversations"
       >
         {/* Header */}
-        <div className="flex-shrink-0 border-b border-border p-3 space-y-2">
+        <div className="flex-shrink-0 border-b border-border/60 px-3 py-3 space-y-2.5">
           <div className="flex items-center gap-2 px-1">
-            <AIPulse size={20} color="#6366f1" active />
-            <span className="text-sm font-semibold text-foreground flex-1">AI Agent</span>
+            <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-primary/10 border border-primary/20 flex-shrink-0">
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" className="text-primary">
+                <path d="M8 1.5L10 6L14.5 8L10 10L8 14.5L6 10L1.5 8L6 6L8 1.5Z" fill="currentColor" opacity="0.9"/>
+              </svg>
+            </div>
+            <span className="text-sm font-medium text-foreground flex-1">AI Agent</span>
             <button
               onClick={() => { setSidebarOpen(false); }}
-              className="md:hidden flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              className="md:hidden flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
               aria-label="Close sidebar"
             >
               <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><line x1="1" y1="1" x2="11" y2="11" /><line x1="11" y1="1" x2="1" y2="11" /></svg>
             </button>
           </div>
-          <Button onClick={handleNewChat} disabled={createMutation.isPending} className="w-full gap-2" size="sm">
+          <Button onClick={handleNewChat} disabled={createMutation.isPending} className="w-full gap-1.5 h-8 text-xs" size="sm">
             {createMutation.isPending
-              ? <AIPulse size={14} color="white" active />
-              : <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><line x1="6.5" y1="1" x2="6.5" y2="12" /><line x1="1" y1="6.5" x2="12" y2="6.5" /></svg>
+              ? <AIPulse size={13} color="white" active />
+              : <svg width="11" height="11" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><line x1="6.5" y1="1" x2="6.5" y2="12" /><line x1="1" y1="6.5" x2="12" y2="6.5" /></svg>
             }
-            New Plan
+            New conversation
           </Button>
           {/* Search */}
           {allConversations.length > 0 && (
@@ -522,9 +526,9 @@ export default function ChatWorkspace() {
       {/* ── Main content ─────────────────────────────────────────────────── */}
       <div className="flex flex-1 flex-col overflow-hidden min-w-0">
         {/* Top bar */}
-        <div className="flex flex-shrink-0 items-center gap-3 border-b border-border px-3 py-2.5 bg-card/50 sm:px-4">
+        <div className="flex flex-shrink-0 items-center gap-2 border-b border-border/60 px-3 py-2 bg-background sm:px-4">
           <button
-            className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors flex-shrink-0"
+            className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors flex-shrink-0"
             onClick={() => setSidebarOpen((o) => !o)}
             aria-label={sidebarOpen ? "Close sidebar" : "Open sidebar"}
           >
@@ -533,8 +537,8 @@ export default function ChatWorkspace() {
               : <svg width="16" height="14" viewBox="0 0 16 14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><line x1="1" y1="2" x2="15" y2="2" /><line x1="1" y1="7" x2="15" y2="7" /><line x1="1" y1="12" x2="15" y2="12" /></svg>
             }
           </button>
-          <h1 className="truncate text-sm font-medium text-foreground">
-            {selectedId && activeConv ? (activeConv.title ?? "New conversation") : "AI Agent Planner"}
+          <h1 className="truncate text-sm text-muted-foreground/70">
+            {selectedId && activeConv ? (activeConv.title ?? "New conversation") : "AI Agent"}
           </h1>
         </div>
 

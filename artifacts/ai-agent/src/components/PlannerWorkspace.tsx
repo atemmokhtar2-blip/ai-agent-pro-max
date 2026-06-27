@@ -202,7 +202,7 @@ function UserBubble({
 
   return (
     <div className="flex justify-end group">
-      <div className="max-w-[78%] sm:max-w-[68%]">
+      <div className="max-w-[80%] sm:max-w-[70%]">
         {editing ? (
           <div className="flex flex-col gap-2">
             <textarea
@@ -213,7 +213,7 @@ function UserBubble({
                 if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submitEdit(); }
                 if (e.key === "Escape") { setEditing(false); setEditValue(content); }
               }}
-              className="w-full resize-none rounded-2xl rounded-tr-md border border-primary/40 bg-primary/5 px-4 py-2.5 text-sm text-foreground leading-relaxed focus:outline-none focus:ring-1 focus:ring-primary/30 min-h-[60px]"
+              className="w-full resize-none rounded-xl border border-border bg-muted/40 px-3.5 py-2.5 text-sm text-foreground leading-relaxed focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 min-h-[60px]"
               rows={3}
             />
             <div className="flex gap-1.5 justify-end">
@@ -233,12 +233,12 @@ function UserBubble({
           </div>
         ) : (
           <>
-            <div className="relative rounded-2xl rounded-tr-md bg-primary px-4 py-2.5 text-sm text-primary-foreground leading-relaxed shadow-sm">
+            <div className="relative rounded-xl bg-muted/50 border border-border/50 px-3.5 py-2.5 text-sm text-foreground leading-relaxed">
               <p className="whitespace-pre-wrap pr-5">{content}</p>
               {onEdit && (
                 <button
                   onClick={() => { setEditValue(content); setEditing(true); }}
-                  className="absolute right-2 top-2 rounded p-0.5 opacity-0 group-hover:opacity-60 hover:!opacity-100 transition-opacity text-primary-foreground/70 hover:text-primary-foreground"
+                  className="absolute right-2 top-2 rounded p-0.5 opacity-0 group-hover:opacity-70 hover:!opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
                   aria-label="Edit message"
                 >
                   <EditIcon />
@@ -246,7 +246,7 @@ function UserBubble({
               )}
             </div>
             {timestamp && (
-              <p className="mt-0.5 text-right text-[10px] text-muted-foreground/40">{formatTime(timestamp)}</p>
+              <p className="mt-0.5 text-right text-[10px] text-muted-foreground/35">{formatTime(timestamp)}</p>
             )}
           </>
         )}
@@ -271,21 +271,23 @@ function AssistantBubble({
   onCopy?: () => void;
 }) {
   return (
-    <div className="flex gap-2.5 items-start group">
-      <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-muted/50 border border-border mt-0.5">
-        <AIPulse size={15} color="#6366f1" active />
+    <div className="flex gap-3 items-start group">
+      <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 border border-primary/20 mt-0.5 shrink-0">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className="text-primary">
+          <path d="M8 2L9.8 6.2L14 8L9.8 9.8L8 14L6.2 9.8L2 8L6.2 6.2L8 2Z" fill="currentColor" opacity="0.9"/>
+        </svg>
       </div>
-      <div className="flex-1 min-w-0">
-        <div className="rounded-2xl rounded-tl-md bg-card border border-border px-4 py-3 text-sm text-foreground leading-relaxed shadow-sm relative">
-          {onCopy && (
-            <button
-              onClick={onCopy}
-              className="absolute right-2 top-2 rounded p-1 opacity-0 group-hover:opacity-60 hover:!opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
-              aria-label="Copy message"
-            >
-              <CopyIconSm />
-            </button>
-          )}
+      <div className="flex-1 min-w-0 relative pt-0.5">
+        {onCopy && (
+          <button
+            onClick={onCopy}
+            className="absolute right-0 top-0 rounded p-1 opacity-0 group-hover:opacity-50 hover:!opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
+            aria-label="Copy message"
+          >
+            <CopyIconSm />
+          </button>
+        )}
+        <div className="text-sm text-foreground leading-relaxed pr-6">
           {children}
         </div>
         <MessageFooter model={model} elapsedMs={elapsedMs} timestamp={timestamp} />
@@ -305,26 +307,18 @@ function ActivityBubble({
   sublabel?: string;
   color?: "primary" | "violet";
 }) {
-  const dotColor = color === "violet" ? "bg-violet-500" : "bg-primary";
-  const textColor = color === "violet" ? "text-violet-300/80" : "text-primary/80";
+  const dotColor = color === "violet" ? "bg-violet-400" : "bg-primary";
+  const textColor = color === "violet" ? "text-violet-300/70" : "text-primary/70";
 
   return (
-    <div className="flex gap-2.5 items-center">
-      {/* Small avatar dot instead of full bubble */}
-      <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-muted/30 border border-border/40 mt-0.5">
+    <div className="flex gap-3 items-center">
+      <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 border border-primary/20 mt-0.5">
         <span className={`h-2 w-2 rounded-full ${dotColor} animate-pulse`} />
       </div>
-      <div className="flex items-center gap-2 min-w-0">
-        {/* Arrow */}
-        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor"
-          strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"
-          className={`flex-shrink-0 ${textColor}`}>
-          <path d="M1 5h8M6 2l3 3-3 3" />
-        </svg>
-        {/* Latest status — updates in place */}
-        <span className={`text-sm font-medium ${textColor} truncate`}>{label}</span>
+      <div className="flex items-center gap-2 min-w-0 pt-0.5">
+        <span className={`text-sm ${textColor} truncate`}>{label}</span>
         {sublabel && (
-          <span className="text-[11px] text-muted-foreground/40 truncate hidden sm:inline">{sublabel}</span>
+          <span className="text-[11px] text-muted-foreground/35 truncate hidden sm:inline">{sublabel}</span>
         )}
       </div>
     </div>
@@ -557,22 +551,24 @@ const EXAMPLE_PROMPTS = [
 
 function EmptyState({ onPrompt }: { onPrompt: (p: string) => void }) {
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-5 p-8 text-center">
-      <div className="relative">
-        <AIPulse size={56} color="#6366f1" active />
+    <div className="flex flex-col items-center justify-center gap-6 py-16 px-4 text-center">
+      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 border border-primary/20">
+        <svg width="22" height="22" viewBox="0 0 16 16" fill="none" className="text-primary">
+          <path d="M8 1.5L10 6L14.5 8L10 10L8 14.5L6 10L1.5 8L6 6L8 1.5Z" fill="currentColor" opacity="0.85"/>
+        </svg>
       </div>
       <div className="max-w-sm">
-        <h2 className="text-base font-semibold text-foreground mb-2">Start building</h2>
-        <p className="text-sm text-muted-foreground leading-relaxed">
-          Describe the software you want to build. The AI agent will generate a complete architecture blueprint, then build and verify it automatically.
+        <h2 className="text-base font-semibold text-foreground mb-1.5">What do you want to build?</h2>
+        <p className="text-sm text-muted-foreground/70 leading-relaxed">
+          Describe your software idea and the AI agent will generate a complete architecture blueprint across 8 stages.
         </p>
       </div>
-      <div className="flex flex-col gap-2 w-full max-w-xs mt-1">
+      <div className="grid grid-cols-1 gap-1.5 w-full max-w-sm">
         {EXAMPLE_PROMPTS.map((p) => (
           <button
             key={p}
             onClick={() => onPrompt(p)}
-            className="rounded-xl border border-border bg-card/50 px-4 py-2.5 text-xs text-left text-muted-foreground hover:text-foreground hover:border-primary/30 hover:bg-muted/30 transition-all"
+            className="rounded-lg border border-border/60 bg-muted/20 px-3.5 py-2 text-xs text-left text-muted-foreground hover:text-foreground hover:border-primary/30 hover:bg-muted/40 transition-all"
           >
             {p}
           </button>
@@ -1138,9 +1134,12 @@ export function PlannerWorkspace({
                 }}
               />
             )}
-            <div className="flex gap-2.5 items-start">
-              <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-muted/50 border border-border mt-0.5">
-                <AIPulse size={15} color={phase.allPassed ? "#22c55e" : "#ef4444"} active />
+            <div className="flex gap-3 items-start">
+              <div className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full border mt-0.5 ${phase.allPassed ? "bg-green-500/10 border-green-500/20" : "bg-red-500/10 border-red-500/20"}`}>
+                {phase.allPassed
+                  ? <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="text-green-400"><polyline points="2,6 5,9 10,3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  : <svg width="10" height="10" viewBox="0 0 10 10" fill="none" className="text-red-400"><line x1="2" y1="2" x2="8" y2="8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><line x1="8" y1="2" x2="2" y2="8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
+                }
               </div>
               <div className="flex-1 min-w-0">
                 <VerificationCard
@@ -1234,7 +1233,7 @@ export function PlannerWorkspace({
         onScroll={handleScroll}
         className="flex-1 overflow-y-auto"
       >
-        <div className="mx-auto max-w-2xl px-4 py-6 flex flex-col gap-4">
+        <div className="mx-auto max-w-2xl px-4 py-6 flex flex-col gap-5">
           {renderHistory()}
           {renderPhase()}
           {regenerateButton}
@@ -1256,8 +1255,8 @@ export function PlannerWorkspace({
 
       {/* ── Input area ───────────────────────────────────────────────────────── */}
       <div
-        className="flex-shrink-0 border-t border-border bg-background/95 backdrop-blur-sm px-3 pt-3 pb-3 sm:px-4"
-        style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom, 0.75rem))" }}
+        className="flex-shrink-0 px-4 pt-3 pb-4"
+        style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom, 1rem))" }}
       >
         <div className="mx-auto max-w-2xl">
           {/* Repository selector */}
@@ -1271,7 +1270,7 @@ export function PlannerWorkspace({
                 value={selectedRepoId}
                 onChange={(e) => setSelectedRepoId(e.target.value)}
                 disabled={isBusy}
-                className="flex-1 rounded-md border border-border bg-card px-2 py-1 text-[11px] text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/30 disabled:opacity-50"
+                className="flex-1 rounded-lg border border-border bg-muted/30 px-2 py-1 text-[11px] text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/30 disabled:opacity-50"
               >
                 <option value="">No repository context</option>
                 {repositories.map((r) => (
@@ -1282,24 +1281,24 @@ export function PlannerWorkspace({
           )}
 
           {/* Input box */}
-          <div className="relative flex items-end gap-2 rounded-2xl border border-border bg-card shadow-sm focus-within:border-primary/40 focus-within:ring-1 focus-within:ring-primary/20 transition-all">
+          <div className="relative flex items-end gap-2 rounded-xl border border-border bg-card/80 shadow-sm focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/10 transition-all duration-150">
             <Textarea
               ref={textareaRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder={inputPlaceholder}
-              className="min-h-[44px] max-h-[160px] flex-1 resize-none border-0 bg-transparent p-3 pr-1 text-sm shadow-none focus-visible:ring-0"
+              className="min-h-[46px] max-h-[180px] flex-1 resize-none border-0 bg-transparent px-4 py-3 pr-2 text-sm shadow-none focus-visible:ring-0 placeholder:text-muted-foreground/40"
               rows={1}
               disabled={isBusy}
             />
 
-            <div className="mb-2 mr-2 flex flex-shrink-0 items-center gap-1.5">
+            <div className="mb-2.5 mr-2.5 flex flex-shrink-0 items-center gap-1.5">
               {/* Stop button — shown while busy */}
               {isBusy && (
                 <button
                   onClick={handleStop}
-                  className="flex h-8 w-8 items-center justify-center rounded-xl border border-border bg-muted text-foreground/70 hover:text-foreground hover:border-destructive/40 hover:bg-destructive/10 transition-colors"
+                  className="flex h-7 w-7 items-center justify-center rounded-lg border border-border bg-muted/60 text-muted-foreground hover:text-foreground hover:border-destructive/40 hover:bg-destructive/10 transition-colors"
                   aria-label="Stop generation"
                   title="Stop generation"
                 >
@@ -1308,34 +1307,36 @@ export function PlannerWorkspace({
               )}
 
               {/* Send button */}
-              <Button
-                size="icon"
-                className="h-8 w-8 flex-shrink-0 rounded-xl"
+              <button
                 onClick={() => void handleSend()}
                 disabled={!input.trim() || isBusy}
+                className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                aria-label="Send message"
               >
                 {isBusy ? (
-                  <AIPulse size={15} color="white" active />
+                  <AIPulse size={13} color="white" active />
                 ) : (
                   <SendIcon />
                 )}
-              </Button>
+              </button>
             </div>
           </div>
 
           {/* Status line */}
-          <div className="mt-1.5 flex items-center justify-between px-1">
-            <p className="text-[10px] text-muted-foreground/35 hidden sm:block">
-              Enter to send · Shift+Enter for newline
+          <div className="mt-1.5 flex items-center justify-between px-0.5">
+            <p className="text-[10px] text-muted-foreground/30 hidden sm:block">
+              Enter ↵ to send · Shift+Enter for new line
             </p>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 ml-auto">
               {(execActive || (phase.kind === "executing" || phase.kind === "verifying")) && execLogs.length > 0 && (
-                <span className="text-[10px] text-violet-400/70 animate-pulse">
+                <span className="flex items-center gap-1.5 text-[10px] text-violet-400/60">
+                  <span className="h-1 w-1 rounded-full bg-violet-400/60 animate-pulse" />
                   {execCurrentStage ?? "Building…"}
                 </span>
               )}
               {isStreaming && (
-                <span className="text-[10px] text-primary/60 animate-pulse">
+                <span className="flex items-center gap-1.5 text-[10px] text-primary/50">
+                  <span className="h-1 w-1 rounded-full bg-primary/50 animate-pulse" />
                   {streamingStage?.name ?? "Planning…"}
                 </span>
               )}
