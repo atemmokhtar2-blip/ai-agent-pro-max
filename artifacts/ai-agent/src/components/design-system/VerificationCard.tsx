@@ -237,6 +237,7 @@ export interface VerificationCardProps {
   phases?: ExecPhase[];
   allPassed: boolean;
   healthReport?: HealthReport;
+  previewUrl?: string;
   onPreview?: () => void;
   onRetryBuild?: () => void;
   onRetryVerification?: () => void;
@@ -248,6 +249,7 @@ export function VerificationCard({
   phases,
   allPassed,
   healthReport,
+  previewUrl,
   onPreview,
   onRetryBuild,
   onRetryVerification,
@@ -264,6 +266,14 @@ export function VerificationCard({
   const handlePreview = () => {
     setPreviewOpened(true);
     onPreview?.();
+  };
+
+  const handleOpenPreviewUrl = () => {
+    if (previewUrl) {
+      window.open(previewUrl, "_blank", "noopener,noreferrer");
+    } else {
+      onPreview?.();
+    }
   };
 
   const makeRetry = (key: "build" | "verify" | "preview", fn?: () => void) => () => {
@@ -393,34 +403,60 @@ export function VerificationCard({
         />
       )}
 
-      {/* Browse files button — only when all passed */}
-      {allPassed && (
-        <div className="px-3 pb-3 pt-1">
+      {/* Action buttons — always shown once execution completes */}
+      <div className="px-3 pb-3 pt-1 flex flex-col gap-2">
+        {/* Browse Generated Files — always accessible */}
+        <button
+          onClick={handlePreview}
+          className="w-full flex items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-semibold transition-all"
+          style={
+            allPassed
+              ? {
+                  background: previewOpened
+                    ? "rgb(34 197 94 / 0.1)"
+                    : "linear-gradient(135deg, rgb(99 102 241 / 0.85), rgb(139 92 246 / 0.85))",
+                  color: previewOpened ? "rgb(74 222 128)" : "#fff",
+                  boxShadow: previewOpened ? "none" : "0 2px 12px rgb(99 102 241 / 0.25)",
+                }
+              : {
+                  background: previewOpened ? "rgb(148 163 184 / 0.08)" : "rgb(148 163 184 / 0.12)",
+                  color: previewOpened ? "rgb(148 163 184)" : "rgb(203 213 225)",
+                  border: "1px solid rgb(148 163 184 / 0.2)",
+                }
+          }
+        >
+          {previewOpened ? (
+            <>
+              <CheckIcon size={12} />
+              Files Panel Open
+            </>
+          ) : (
+            <>
+              <FolderOpenIcon />
+              Browse Generated Files
+            </>
+          )}
+        </button>
+
+        {/* Open Preview URL — shown when a previewUrl is available */}
+        {previewUrl && (
           <button
-            onClick={handlePreview}
-            className="w-full flex items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-semibold transition-all"
+            onClick={handleOpenPreviewUrl}
+            className="w-full flex items-center justify-center gap-2 rounded-lg py-2 text-xs font-medium transition-all"
             style={{
-              background: previewOpened
-                ? "rgb(34 197 94 / 0.1)"
-                : "linear-gradient(135deg, rgb(99 102 241 / 0.85), rgb(139 92 246 / 0.85))",
-              color: previewOpened ? "rgb(74 222 128)" : "#fff",
-              boxShadow: previewOpened ? "none" : "0 2px 12px rgb(99 102 241 / 0.25)",
+              background: "rgb(14 165 233 / 0.1)",
+              color: "rgb(56 189 248)",
+              border: "1px solid rgb(14 165 233 / 0.2)",
             }}
           >
-            {previewOpened ? (
-              <>
-                <CheckIcon size={12} />
-                Files Panel Open
-              </>
-            ) : (
-              <>
-                <FolderOpenIcon />
-                Browse Generated Files
-              </>
-            )}
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
+              <path d="M5 2H2a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1V7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+              <path d="M8 1h3m0 0v3m0-3L5.5 6.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            Open Project Preview
           </button>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

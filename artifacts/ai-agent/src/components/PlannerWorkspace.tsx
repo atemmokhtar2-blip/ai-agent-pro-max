@@ -1167,10 +1167,11 @@ export function PlannerWorkspace({
                   phases={task?.execPhases}
                   allPassed={phase.allPassed}
                   healthReport={phase.healthReport ?? task?.healthReport}
+                  previewUrl={phase.previewUrl}
                   onPreview={() => setShowFiles(true)}
                   onRetryBuild={() => handleRetryExecution(phase.taskId, blueprint)}
                   onRetryVerification={() => handleRetryVerification(phase.taskId, blueprint)}
-                  onRetryPreview={() => toast.info("Restarting preview server…")}
+                  onRetryPreview={() => setShowFiles(true)}
                 />
               </div>
             </div>

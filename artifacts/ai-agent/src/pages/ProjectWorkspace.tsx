@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import {
   useGetProject,
   getGetProjectQueryKey,
@@ -14,7 +14,7 @@ import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/componen
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ChevronLeft, Play, Settings, Send, Loader2, Bot, User, Copy, Check } from "lucide-react";
+import { ChevronLeft, Play, Settings, Send, Loader2, Bot, User, Copy, Check, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
 // ── Workspace message bubble ────────────────────────────────────────────────────
@@ -87,7 +87,13 @@ function WorkspaceMessageBubble({ msg }: { msg: { id: string; role: string; cont
 
 // ── AI Chat Panel ──────────────────────────────────────────────────────────────
 
-function AIChatPanel({ projectId }: { projectId: string }) {
+function AIChatPanel({
+  projectId,
+  onActiveConversation,
+}: {
+  projectId: string;
+  onActiveConversation?: (id: string | null) => void;
+}) {
   const queryClient = useQueryClient();
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [input, setInput] = useState("");
@@ -103,6 +109,10 @@ function AIChatPanel({ projectId }: { projectId: string }) {
 
   const activeConversationId =
     conversationId ?? conversations?.items?.[0]?.id ?? null;
+
+  useEffect(() => {
+    onActiveConversation?.(activeConversationId);
+  }, [activeConversationId, onActiveConversation]);
 
   const { data: messagesData } = useListMessages(
     activeConversationId ?? "",
@@ -228,24 +238,165 @@ function AIChatPanel({ projectId }: { projectId: string }) {
   );
 }
 
-// ── Explorer panel (shared) ────────────────────────────────────────────────────
+// ── Explorer panel — connected to real generated files ─────────────────────────
 
-function ExplorerPanel() {
-  return (
-    <div className="p-4 h-full overflow-y-auto">
-      <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4">
-        Explorer
-      </h3>
-      <div className="space-y-1 text-sm text-muted-foreground">
-        {["index.tsx", "styles.css", "config.json"].map((f) => (
-          <div
-            key={f}
-            className="px-2 py-1.5 rounded cursor-pointer hover:bg-muted hover:text-foreground transition-colors"
-          >
-            {f}
-          </div>
-        ))}
+interface RemoteFile { path: string; content: string; size: number; extension: string }
+
+function extBadge(ext: string): { label: string; cls: string } {
+  const m: Record<string, { label: string; cls: string }> = {
+    ts:   { label: "TS",  cls: "bg-sky-500/20 text-sky-400" },
+    tsx:  { label: "⚛",  cls: "bg-violet-500/20 text-violet-400" },
+    js:   { label: "JS",  cls: "bg-yellow-500/20 text-yellow-400" },
+    jsx:  { label: "⚛",  cls: "bg-yellow-500/20 text-yellow-400" },
+    css:  { label: "CS",  cls: "bg-pink-500/20 text-pink-400" },
+    html: { label: "HT",  cls: "bg-orange-500/20 text-orange-400" },
+    json: { label: "{}",  cls: "bg-amber-500/20 text-amber-400" },
+    md:   { label: "MD",  cls: "bg-zinc-500/20 text-zinc-400" },
+    sql:  { label: "DB",  cls: "bg-blue-500/20 text-blue-400" },
+    py:   { label: "PY",  cls: "bg-green-500/20 text-green-400" },
+    sh:   { label: "SH",  cls: "bg-emerald-500/20 text-emerald-400" },
+    env:  { label: "EN",  cls: "bg-orange-500/20 text-orange-400" },
+  };
+  return m[ext?.toLowerCase()] ?? { label: "FI", cls: "bg-zinc-600/20 text-zinc-400" };
+}
+
+function humanSize(b: number) {
+  if (b < 1024) return `${b}B`;
+  if (b < 1048576) return `${(b / 1024).toFixed(1)}KB`;
+  return `${(b / 1048576).toFixed(1)}MB`;
+}
+
+function authHdr(): Record<string, string> {
+  const tok = localStorage.getItem("access_token");
+  return tok ? { Authorization: `Bearer ${tok}` } : {};
+}
+
+function ExplorerPanel({ conversationId }: { conversationId: string | null }) {
+  const [files, setFiles] = useState<RemoteFile[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<RemoteFile | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const load = useCallback(async () => {
+    if (!conversationId) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/v1/ai/projects/${conversationId}/files/download`, {
+        headers: authHdr(),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(body.error ?? `HTTP ${res.status}`);
+      }
+      const data = await res.json() as { files?: RemoteFile[] };
+      setFiles(data.files ?? []);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load files");
+    } finally {
+      setLoading(false);
+    }
+  }, [conversationId]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const handleCopy = async () => {
+    if (!selected?.content) return;
+    await navigator.clipboard.writeText(selected.content);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  if (!conversationId) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full p-6 text-center">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" className="text-muted-foreground/30 mb-3">
+          <path d="M3 7a2 2 0 012-2h5l2 2h7a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/>
+        </svg>
+        <p className="text-xs text-muted-foreground/50">No project yet</p>
+        <p className="text-[10px] text-muted-foreground/35 mt-1">Use the AI assistant to generate files</p>
       </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden">
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-border flex-shrink-0">
+        <span className="flex-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          Files {files.length > 0 && <span className="ml-1 text-muted-foreground/50">({files.length})</span>}
+        </span>
+        <button
+          onClick={() => void load()}
+          disabled={loading}
+          title="Refresh"
+          className="rounded p-1 text-muted-foreground/40 hover:text-foreground hover:bg-muted/30 transition-colors disabled:opacity-30"
+        >
+          <RefreshCw className={`h-3 w-3 ${loading ? "animate-spin" : ""}`} />
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-12">
+          <div className="flex gap-1">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="h-1.5 w-1.5 rounded-full bg-primary/50 animate-bounce" style={{ animationDelay: `${i * 0.1}s` }} />
+            ))}
+          </div>
+        </div>
+      ) : error ? (
+        <div className="px-4 py-8 text-center">
+          <p className="text-xs text-red-400">{error}</p>
+          <button onClick={() => void load()} className="mt-2 text-xs text-primary hover:underline">Retry</button>
+        </div>
+      ) : files.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.2" className="text-muted-foreground/30 mb-2">
+            <path d="M2 5a2 2 0 012-2h5l2 2h7a2 2 0 012 2v9a2 2 0 01-2 2H4a2 2 0 01-2-2V5z"/>
+          </svg>
+          <p className="text-[11px] text-muted-foreground/50">No files yet</p>
+          <p className="text-[10px] text-muted-foreground/35 mt-1">Run a generation first</p>
+        </div>
+      ) : selected ? (
+        <div className="flex flex-col flex-1 overflow-hidden min-h-0">
+          <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border/50 bg-muted/10 flex-shrink-0">
+            <button
+              onClick={() => setSelected(null)}
+              className="text-muted-foreground/50 hover:text-foreground transition-colors"
+            >
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><polyline points="6,1 2,5 6,9"/></svg>
+            </button>
+            <span className="flex-1 truncate font-mono text-[10px] text-foreground/60">{selected.path}</span>
+            <button onClick={() => void handleCopy()} title="Copy" className="rounded p-0.5 text-muted-foreground/40 hover:text-foreground hover:bg-muted/30 transition-colors">
+              {copied ? <Check className="h-3 w-3 text-green-400"/> : <Copy className="h-3 w-3"/>}
+            </button>
+          </div>
+          <pre className="flex-1 overflow-auto p-3 text-[10px] font-mono text-foreground/70 leading-relaxed">
+            {selected.content || <span className="text-muted-foreground/40">(empty file)</span>}
+          </pre>
+        </div>
+      ) : (
+        <div className="flex-1 overflow-y-auto py-1">
+          {files.map((f) => {
+            const { label, cls } = extBadge(f.extension);
+            return (
+              <button
+                key={f.path}
+                onClick={() => setSelected(f)}
+                className="flex w-full items-center gap-2 px-3 py-[5px] hover:bg-muted/20 transition-colors text-left"
+              >
+                <span className={`flex h-4 w-5 flex-shrink-0 items-center justify-center rounded text-[8px] font-bold ${cls}`}>
+                  {label}
+                </span>
+                <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-foreground/65">
+                  {f.path}
+                </span>
+                <span className="flex-shrink-0 text-[9px] text-muted-foreground/25">{humanSize(f.size)}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -334,6 +485,8 @@ export default function ProjectWorkspace() {
     query: { enabled: !!id, queryKey: getGetProjectQueryKey(id || "") },
   });
 
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+
   if (isLoading) {
     return (
       <div className="p-6 sm:p-8">
@@ -375,7 +528,7 @@ export default function ProjectWorkspace() {
             className="flex-1 overflow-hidden m-0 mt-0 data-[state=active]:flex flex-col"
           >
             <div className="flex-1 overflow-hidden bg-card/50">
-              <ExplorerPanel />
+              <ExplorerPanel conversationId={activeConversationId} />
             </div>
           </TabsContent>
 
@@ -402,7 +555,10 @@ export default function ProjectWorkspace() {
             className="flex-1 overflow-hidden m-0 mt-0 data-[state=active]:flex flex-col"
           >
             <div className="flex-1 overflow-hidden bg-card/50">
-              <AIChatPanel projectId={id || ""} />
+              <AIChatPanel
+                projectId={id || ""}
+                onActiveConversation={setActiveConversationId}
+              />
             </div>
           </TabsContent>
         </Tabs>
@@ -417,7 +573,7 @@ export default function ProjectWorkspace() {
             maxSize={28}
             className="bg-card/50 border-r"
           >
-            <ExplorerPanel />
+            <ExplorerPanel conversationId={activeConversationId} />
           </ResizablePanel>
           <ResizableHandle />
 
@@ -440,7 +596,10 @@ export default function ProjectWorkspace() {
             maxSize={40}
             className="bg-card/50 border-l"
           >
-            <AIChatPanel projectId={id || ""} />
+            <AIChatPanel
+              projectId={id || ""}
+              onActiveConversation={setActiveConversationId}
+            />
           </ResizablePanel>
         </ResizablePanelGroup>
       </div>
