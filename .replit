@@ -52,6 +52,7 @@ args = "pkill -f 'dist/index.mjs' 2>/dev/null || true; cd artifacts/api-server &
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
 expertMode = true
+integrations = ["javascript_database:1.0.0", "javascript_openrouter_ai_integrations:2.0.0"]
 
 [postMerge]
 path = "scripts/post-merge.sh"
