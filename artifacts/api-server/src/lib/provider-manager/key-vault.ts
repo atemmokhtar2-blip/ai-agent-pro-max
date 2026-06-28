@@ -20,8 +20,9 @@ const TAG_LEN = 16;
 
 function getEncryptionKey(): Buffer {
   const rawEnv = process.env["PROVIDER_ENCRYPTION_KEY"];
-  if (rawEnv && rawEnv.length >= 32) {
-    return Buffer.from(rawEnv.slice(0, 64), "hex").slice(0, 32);
+  if (rawEnv) {
+    // Derive a stable 32-byte key from whatever the user provided (hex or arbitrary string)
+    return crypto.createHmac("sha256", "ai-provider-vault-salt").update(rawEnv).digest().slice(0, 32);
   }
 
   const jwtSecret = process.env["JWT_SECRET"];
