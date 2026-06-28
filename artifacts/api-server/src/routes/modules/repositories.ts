@@ -18,7 +18,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { db, repositoryImportsTable, repoAnalysisResultsTable, githubConnectionsTable, gitOperationsTable } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
-import { decrypt, createClient, createPublicClient, getRepository, listBranches, listCommits, buildAuthenticatedCloneUrl, parseGitHubUrl, cloneRepository, getLog } from "@workspace/github";
+import { decrypt, createClient, createPublicClient, getRepository, listBranches, listCommits, buildAuthenticatedCloneUrl, parseGitHubUrl, cloneRepository, getLog, pullLatest, setRemoteUrl, isGitRepo } from "@workspace/github";
 import { analyzeRepository, generateProjectContext, detectRequiredSecrets } from "@workspace/repo-agent";
 import { authenticate } from "../../middlewares/authenticate.js";
 import { validateBody } from "../../middlewares/validate.js";
@@ -37,6 +37,7 @@ const importSchema = z.object({
   url: z.string().url("Must be a valid GitHub repository URL").optional(),
   owner: z.string().optional(),
   repo: z.string().optional(),
+  branch: z.string().optional(), // specific branch to clone (defaults to repo's default branch)
   pat: z.string().optional(), // optional PAT for private repos without stored connection
 }).refine((d) => d.url || (d.owner && d.repo), {
   message: "Provide either url or both owner and repo",
@@ -184,7 +185,8 @@ router.post("/import", validateBody(importSchema), async (req, res) => {
         ? buildAuthenticatedCloneUrl(repoInfo!.cloneUrl, token)
         : repoInfo!.cloneUrl;
 
-      await cloneRepository({ url: cloneUrl, destination: localPath, branch: repoInfo!.defaultBranch });
+      const targetBranch = body.branch ?? repoInfo!.defaultBranch;
+      await cloneRepository({ url: cloneUrl, destination: localPath, branch: targetBranch });
 
       await db.update(repositoryImportsTable).set({ status: "analyzing" }).where(eq(repositoryImportsTable.id, repoId));
 
@@ -417,6 +419,171 @@ router.post("/:id/analyze", async (req, res) => {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       await db.update(repositoryImportsTable).set({ status: "error", errorMessage: msg }).where(eq(repositoryImportsTable.id, id));
+    }
+  });
+});
+
+// ─── POST /:id/pull — Pull latest changes + re-analyze ────────────────────────
+
+router.post("/:id/pull", async (req, res) => {
+  const userId = req.user!.sub;
+  const { id } = req.params as { id: string };
+
+  const [repo] = await db.select()
+    .from(repositoryImportsTable)
+    .where(and(eq(repositoryImportsTable.id, id), eq(repositoryImportsTable.userId, userId)))
+    .limit(1);
+
+  if (!repo) { res.status(404).json({ error: "Repository not found" }); return; }
+  if (!repo.localPath) { res.status(400).json({ error: "Repository not yet cloned" }); return; }
+  if (repo.status === "cloning" || repo.status === "analyzing") {
+    res.status(409).json({ error: "Import already in progress" }); return;
+  }
+
+  if (!isGitRepo(repo.localPath)) {
+    res.status(400).json({ error: "Local clone not found. Try re-importing the repository." }); return;
+  }
+
+  // Update remote URL with fresh token if repo is private
+  if (repo.isPrivate && repo.githubConnectionId) {
+    const [conn] = await db.select().from(githubConnectionsTable)
+      .where(eq(githubConnectionsTable.userId, userId)).limit(1);
+    if (conn) {
+      try {
+        const token = decrypt(conn.encryptedToken);
+        const authedUrl = buildAuthenticatedCloneUrl(repo.cloneUrl, token);
+        await setRemoteUrl(repo.localPath, authedUrl);
+      } catch { /* continue without token update */ }
+    }
+  }
+
+  await db.update(repositoryImportsTable)
+    .set({ status: "analyzing" })
+    .where(eq(repositoryImportsTable.id, id));
+
+  res.json({ message: "Pulling latest changes and re-analyzing…" });
+
+  setImmediate(async () => {
+    try {
+      await pullLatest(repo.localPath!, repo.defaultBranch);
+
+      await db.insert(gitOperationsTable).values({
+        id: generateId(), userId, repositoryImportId: id,
+        operation: "pull", branch: repo.defaultBranch,
+        status: "success", output: `Pulled ${repo.fullName}@${repo.defaultBranch}`,
+      });
+
+      const analysis = await analyzeRepository(repo.localPath!);
+      const commits = await getLog(repo.localPath!, 10);
+      const context = generateProjectContext(analysis, commits);
+      const requiredSecrets = detectRequiredSecrets(analysis);
+
+      await db.delete(repoAnalysisResultsTable).where(eq(repoAnalysisResultsTable.repositoryImportId, id));
+      await db.insert(repoAnalysisResultsTable).values({
+        id: generateId(), repositoryImportId: id,
+        framework: analysis.framework, language: analysis.language,
+        packageManager: analysis.packageManager, buildSystem: analysis.buildSystem,
+        hasDatabase: analysis.hasDatabase, hasDocker: analysis.hasDocker, hasCI: analysis.hasCI,
+        folderTree: analysis.folderTree as unknown as Record<string, unknown>,
+        dependencies: analysis.dependencies as unknown as Record<string, unknown>,
+        devDependencies: analysis.devDependencies as unknown as Record<string, unknown>,
+        detectedEnvVars: analysis.detectedEnvVars as unknown as Record<string, unknown>[],
+        detectedSecrets: requiredSecrets as unknown as Record<string, unknown>[],
+        routes: analysis.routes as unknown as string[],
+        components: analysis.components as unknown as string[],
+        apis: analysis.apis as unknown as string[],
+        deploymentConfig: analysis.deploymentConfig as unknown as Record<string, unknown> | null,
+        fullContext: context as unknown as Record<string, unknown>,
+      });
+
+      await db.update(repositoryImportsTable)
+        .set({ status: "ready" })
+        .where(eq(repositoryImportsTable.id, id));
+      logger.info({ id, fullName: repo.fullName }, "Repository pull + re-analysis complete");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error({ err, id }, "Repository pull failed");
+      await db.update(repositoryImportsTable)
+        .set({ status: "error", errorMessage: `Pull failed: ${msg}` })
+        .where(eq(repositoryImportsTable.id, id));
+    }
+  });
+});
+
+// ─── POST /:id/checkout — Switch to a different branch and re-analyze ──────────
+
+router.post("/:id/checkout", async (req, res) => {
+  const userId = req.user!.sub;
+  const { id } = req.params as { id: string };
+  const { branch } = req.body as { branch?: string };
+
+  if (!branch?.trim()) {
+    res.status(400).json({ error: "branch is required" }); return;
+  }
+
+  const [repo] = await db.select()
+    .from(repositoryImportsTable)
+    .where(and(eq(repositoryImportsTable.id, id), eq(repositoryImportsTable.userId, userId)))
+    .limit(1);
+
+  if (!repo) { res.status(404).json({ error: "Repository not found" }); return; }
+  if (!repo.localPath || !isGitRepo(repo.localPath)) {
+    res.status(400).json({ error: "Local clone not found. Try re-importing the repository." }); return;
+  }
+  if (repo.status === "cloning" || repo.status === "analyzing") {
+    res.status(409).json({ error: "Import already in progress" }); return;
+  }
+
+  await db.update(repositoryImportsTable)
+    .set({ status: "analyzing", defaultBranch: branch.trim() })
+    .where(eq(repositoryImportsTable.id, id));
+
+  res.json({ message: `Switching to branch '${branch}' and re-analyzing…` });
+
+  setImmediate(async () => {
+    try {
+      const { default: simpleGit } = await import("simple-git");
+      const git = simpleGit(repo.localPath!);
+      await git.fetch(["--all"]);
+      await git.checkout(branch.trim());
+
+      await db.insert(gitOperationsTable).values({
+        id: generateId(), userId, repositoryImportId: id,
+        operation: "checkout", branch: branch.trim(),
+        status: "success", output: `Checked out ${repo.fullName}@${branch}`,
+      });
+
+      const analysis = await analyzeRepository(repo.localPath!);
+      const commits = await getLog(repo.localPath!, 10);
+      const context = generateProjectContext(analysis, commits);
+      const requiredSecrets = detectRequiredSecrets(analysis);
+
+      await db.delete(repoAnalysisResultsTable).where(eq(repoAnalysisResultsTable.repositoryImportId, id));
+      await db.insert(repoAnalysisResultsTable).values({
+        id: generateId(), repositoryImportId: id,
+        framework: analysis.framework, language: analysis.language,
+        packageManager: analysis.packageManager, buildSystem: analysis.buildSystem,
+        hasDatabase: analysis.hasDatabase, hasDocker: analysis.hasDocker, hasCI: analysis.hasCI,
+        folderTree: analysis.folderTree as unknown as Record<string, unknown>,
+        dependencies: analysis.dependencies as unknown as Record<string, unknown>,
+        devDependencies: analysis.devDependencies as unknown as Record<string, unknown>,
+        detectedEnvVars: analysis.detectedEnvVars as unknown as Record<string, unknown>[],
+        detectedSecrets: requiredSecrets as unknown as Record<string, unknown>[],
+        routes: analysis.routes as unknown as string[],
+        components: analysis.components as unknown as string[],
+        apis: analysis.apis as unknown as string[],
+        deploymentConfig: analysis.deploymentConfig as unknown as Record<string, unknown> | null,
+        fullContext: context as unknown as Record<string, unknown>,
+      });
+
+      await db.update(repositoryImportsTable)
+        .set({ status: "ready" })
+        .where(eq(repositoryImportsTable.id, id));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      await db.update(repositoryImportsTable)
+        .set({ status: "error", errorMessage: `Checkout failed: ${msg}` })
+        .where(eq(repositoryImportsTable.id, id));
     }
   });
 });

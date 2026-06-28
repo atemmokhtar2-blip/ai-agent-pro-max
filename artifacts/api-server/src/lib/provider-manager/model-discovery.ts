@@ -92,7 +92,7 @@ function classifyOpenRouterModel(m: ORModel): DiscoveredModel {
     supportsStreaming:  supportsStream,
     categories,
     rankScore:         score,
-    rawMetadata:       m as Record<string, unknown>,
+    rawMetadata:       m as unknown as Record<string, unknown>,
   };
 }
 

@@ -682,7 +682,7 @@ router.post("/planner/stream", validateBody(plannerSchema), async (req, res) => 
           maxTokens: opts.maxTokens,
           temperature: opts.temperature,
           onRotationEvent: (evt) => {
-            if (!aborted) sendEvent({ type: "provider_status", ...evt });
+            if (!aborted) sendEvent({ ...evt, type: "provider_status" });
           },
         }),
     );
