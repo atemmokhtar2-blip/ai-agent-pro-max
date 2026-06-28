@@ -14,7 +14,7 @@ import { join } from "path";
 import { tmpdir } from "os";
 import { copyToWorkspace, createBranch, getCurrentBranch, isGitRepo, setRemoteUrl, buildAuthenticatedCloneUrl } from "@workspace/github";
 import type { DiffSummary } from "@workspace/github";
-import { getDiffSummary, commitChanges, pushBranch, undoLastCommit, rollbackToCommit, resetToHead, getLog } from "@workspace/github";
+import { getDiffSummary, commitChanges, pushBranch, pullLatest, undoLastCommit, rollbackToCommit, resetToHead, getLog } from "@workspace/github";
 import type { LogEntry } from "@workspace/github";
 
 export interface CreateWorkspaceOptions {
@@ -101,12 +101,36 @@ export async function commitWorkspaceChanges(
 
 /**
  * Push the workspace branch to remote.
+ * Call setRemoteUrl with a fresh PAT before pushing when the token may have rotated.
  */
 export async function pushWorkspaceBranch(
   workspacePath: string,
-  branchName: string
+  branchName: string,
+  pat?: string,
+  cloneUrl?: string
 ): Promise<void> {
+  if (pat && cloneUrl) {
+    const authUrl = buildAuthenticatedCloneUrl(cloneUrl, pat);
+    await setRemoteUrl(workspacePath, authUrl);
+  }
   await pushBranch(workspacePath, branchName);
+}
+
+/**
+ * Pull latest changes from remote into the workspace branch.
+ * Refreshes the remote URL with a fresh PAT when provided.
+ */
+export async function pullWorkspaceBranch(
+  workspacePath: string,
+  branch: string,
+  pat?: string,
+  cloneUrl?: string
+): Promise<void> {
+  if (pat && cloneUrl) {
+    const authUrl = buildAuthenticatedCloneUrl(cloneUrl, pat);
+    await setRemoteUrl(workspacePath, authUrl);
+  }
+  await pullLatest(workspacePath, branch);
 }
 
 /**

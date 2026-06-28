@@ -18,7 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import {
   Loader2, GitBranch, Plus, Trash2, RefreshCw, GitCommit as GitCommitIcon,
-  GitPullRequest, Upload, Undo2, ChevronDown, ChevronRight, AlertCircle,
+  GitPullRequest, Upload, Download, Undo2, ChevronDown, ChevronRight, AlertCircle,
   CheckCircle2, XCircle, Terminal, Eye, RotateCcw, Play,
   Clock, Hash,
 } from "lucide-react";
@@ -245,8 +245,18 @@ function WorkspaceDetail({ ws }: { ws: WorkspaceSession }) {
 
   const pushMutation = useMutation({
     mutationFn: () => workspacesApi.push(ws.id),
-    onSuccess: () => toast.success("Pushed to remote successfully"),
-    onError: (err: Error) => toast.error(err.message),
+    onSuccess: (data) => toast.success(`Pushed branch "${data.branch}" to remote`),
+    onError: (err: Error) => toast.error(`Push failed: ${err.message}`),
+  });
+
+  const pullMutation = useMutation({
+    mutationFn: () => workspacesApi.pull(ws.id),
+    onSuccess: (data) => {
+      toast.success(`Pulled latest changes on "${data.branch}"`);
+      qc.invalidateQueries({ queryKey: ["ws-diff", ws.id] });
+      qc.invalidateQueries({ queryKey: ["ws-log", ws.id] });
+    },
+    onError: (err: Error) => toast.error(`Pull failed: ${err.message}`),
   });
 
   const undoMutation = useMutation({
@@ -317,8 +327,22 @@ function WorkspaceDetail({ ws }: { ws: WorkspaceSession }) {
         <Button
           size="sm"
           variant="outline"
+          onClick={() => pullMutation.mutate()}
+          disabled={pullMutation.isPending || pushMutation.isPending}
+        >
+          {pullMutation.isPending ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+          ) : (
+            <Download className="h-3.5 w-3.5 mr-1.5" />
+          )}
+          Pull
+        </Button>
+
+        <Button
+          size="sm"
+          variant="outline"
           onClick={() => pushMutation.mutate()}
-          disabled={pushMutation.isPending}
+          disabled={pushMutation.isPending || pullMutation.isPending}
         >
           {pushMutation.isPending ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />

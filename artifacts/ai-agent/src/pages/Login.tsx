@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { Loader2, Eye, EyeOff, Sparkles } from "lucide-react";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
 const loginSchema = z.object({
@@ -126,32 +126,13 @@ function OAuthButton({ provider, disabled, loading, onClick }: OAuthButtonProps)
 export default function Login() {
   const [, setLocation] = useLocation();
   const { login: authenticate, isAuthenticated } = useAuth();
-  const [showPassword,    setShowPassword]    = useState(false);
-  const [loadingOAuth,    setLoadingOAuth]    = useState<OAuthProvider | null>(null);
-  const [oauthError,      setOauthError]      = useState<string | null>(null);
-  const [availableOAuth,  setAvailableOAuth]  = useState<string[] | null>(null);
-  const [showEmailForm,   setShowEmailForm]   = useState(false);
-  const fetchedRef = useRef(false);
+  const [showPassword,  setShowPassword]  = useState(false);
+  const [loadingOAuth,  setLoadingOAuth]  = useState<OAuthProvider | null>(null);
+  const [oauthError,    setOauthError]    = useState<string | null>(null);
 
   useEffect(() => {
     if (isAuthenticated) setLocation("/dashboard");
   }, [isAuthenticated, setLocation]);
-
-  useEffect(() => {
-    if (fetchedRef.current) return;
-    fetchedRef.current = true;
-    fetch("/api/v1/auth/oauth/providers")
-      .then((r) => r.json())
-      .then((body: { providers?: string[] }) => {
-        const providers = body.providers ?? [];
-        setAvailableOAuth(providers);
-        if (providers.length === 0) setShowEmailForm(true);
-      })
-      .catch(() => {
-        setAvailableOAuth([]);
-        setShowEmailForm(true);
-      });
-  }, []);
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -229,132 +210,110 @@ export default function Login() {
                 <p className="text-sm text-muted-foreground">Sign in to continue to AI Agent</p>
               </motion.div>
 
-              {/* OAuth buttons — only when at least one provider is available */}
-              {availableOAuth !== null && availableOAuth.length > 0 && (
-                <motion.div
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.15, duration: 0.35 }}
-                  className="space-y-3"
-                >
-                  {availableOAuth.includes("google") && (
-                    <OAuthButton
-                      provider="google"
-                      loading={loadingOAuth === "google"}
-                      disabled={anyOAuthLoading || isPending}
-                      onClick={() => handleOAuth("google")}
-                    />
+              {/* OAuth buttons — always visible */}
+              <motion.div
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.15, duration: 0.35 }}
+                className="space-y-3"
+              >
+                <OAuthButton
+                  provider="google"
+                  loading={loadingOAuth === "google"}
+                  disabled={anyOAuthLoading || isPending}
+                  onClick={() => handleOAuth("google")}
+                />
+                <OAuthButton
+                  provider="github"
+                  loading={loadingOAuth === "github"}
+                  disabled={anyOAuthLoading || isPending}
+                  onClick={() => handleOAuth("github")}
+                />
+
+                <AnimatePresence>
+                  {oauthError && (
+                    <motion.p
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="text-xs text-amber-500/90 text-center px-2"
+                    >
+                      {oauthError.includes("not configured") || oauthError.includes("disabled")
+                        ? "Social sign-in isn't enabled yet — use email & password below."
+                        : oauthError}
+                    </motion.p>
                   )}
-                  {availableOAuth.includes("github") && (
-                    <OAuthButton
-                      provider="github"
-                      loading={loadingOAuth === "github"}
-                      disabled={anyOAuthLoading || isPending}
-                      onClick={() => handleOAuth("github")}
+                </AnimatePresence>
+              </motion.div>
+
+              {/* Divider */}
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.2, duration: 0.35 }}
+                className="relative flex items-center"
+              >
+                <div className="flex-1 h-px bg-border/60" />
+                <span className="mx-3 text-xs text-muted-foreground select-none whitespace-nowrap">
+                  or sign in with email
+                </span>
+                <div className="flex-1 h-px bg-border/60" />
+              </motion.div>
+
+              {/* Email / password form — always visible */}
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4" noValidate>
+                <div className="space-y-1.5">
+                  <Label htmlFor="email" className="text-sm font-medium">Email</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="you@example.com"
+                    autoComplete="email"
+                    aria-invalid={!!errors.email}
+                    className="h-10 rounded-lg bg-background/80 border-border/60 focus:border-primary/60 focus:ring-primary/20"
+                    {...form.register("email")}
+                  />
+                  <FieldError message={errors.email?.message} />
+                </div>
+
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="password" className="text-sm font-medium">Password</Label>
+                    <Link href="/forgot-password" className="text-xs text-primary hover:underline font-medium">
+                      Forgot password?
+                    </Link>
+                  </div>
+                  <div className="relative">
+                    <Input
+                      id="password"
+                      type={showPassword ? "text" : "password"}
+                      autoComplete="current-password"
+                      aria-invalid={!!errors.password}
+                      className="h-10 pr-10 rounded-lg bg-background/80 border-border/60 focus:border-primary/60 focus:ring-primary/20"
+                      {...form.register("password")}
                     />
-                  )}
+                    <button
+                      type="button"
+                      tabIndex={-1}
+                      onClick={() => setShowPassword(v => !v)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                  <FieldError message={errors.password?.message} />
+                </div>
 
-                  <AnimatePresence>
-                    {oauthError && (
-                      <motion.p
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: "auto" }}
-                        exit={{ opacity: 0, height: 0 }}
-                        className="text-xs text-destructive text-center px-2"
-                      >
-                        {oauthError}
-                      </motion.p>
-                    )}
-                  </AnimatePresence>
-                </motion.div>
-              )}
-
-              {/* Divider — only shown when OAuth buttons are visible */}
-              {availableOAuth !== null && availableOAuth.length > 0 && (
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: 0.2, duration: 0.35 }}
-                  className="relative flex items-center"
+                <Button
+                  type="submit"
+                  className="w-full h-10 rounded-lg font-semibold"
+                  disabled={isPending || anyOAuthLoading}
                 >
-                  <div className="flex-1 h-px bg-border/60" />
-                  <button
-                    type="button"
-                    onClick={() => setShowEmailForm(v => !v)}
-                    className="mx-3 text-xs text-muted-foreground hover:text-foreground transition-colors select-none whitespace-nowrap"
-                  >
-                    {showEmailForm ? "hide email form" : "or sign in with email"}
-                  </button>
-                  <div className="flex-1 h-px bg-border/60" />
-                </motion.div>
-              )}
-
-              {/* Email / password form — collapsible */}
-              <AnimatePresence>
-                {showEmailForm && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: "auto" }}
-                    exit={{ opacity: 0, height: 0 }}
-                    transition={{ duration: 0.25, ease: "easeInOut" }}
-                    className="overflow-hidden"
-                  >
-                    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-1" noValidate>
-                      <div className="space-y-1.5">
-                        <Label htmlFor="email" className="text-sm font-medium">Email</Label>
-                        <Input
-                          id="email"
-                          type="email"
-                          placeholder="you@example.com"
-                          autoComplete="email"
-                          aria-invalid={!!errors.email}
-                          className="h-10 rounded-lg bg-background/80 border-border/60 focus:border-primary/60 focus:ring-primary/20"
-                          {...form.register("email")}
-                        />
-                        <FieldError message={errors.email?.message} />
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <div className="flex items-center justify-between">
-                          <Label htmlFor="password" className="text-sm font-medium">Password</Label>
-                          <Link href="/forgot-password" className="text-xs text-primary hover:underline font-medium">
-                            Forgot password?
-                          </Link>
-                        </div>
-                        <div className="relative">
-                          <Input
-                            id="password"
-                            type={showPassword ? "text" : "password"}
-                            autoComplete="current-password"
-                            aria-invalid={!!errors.password}
-                            className="h-10 pr-10 rounded-lg bg-background/80 border-border/60 focus:border-primary/60 focus:ring-primary/20"
-                            {...form.register("password")}
-                          />
-                          <button
-                            type="button"
-                            tabIndex={-1}
-                            onClick={() => setShowPassword(v => !v)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                            aria-label={showPassword ? "Hide password" : "Show password"}
-                          >
-                            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                          </button>
-                        </div>
-                        <FieldError message={errors.password?.message} />
-                      </div>
-
-                      <Button
-                        type="submit"
-                        className="w-full h-10 rounded-lg font-semibold"
-                        disabled={isPending || anyOAuthLoading}
-                      >
-                        {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        {isPending ? "Signing in…" : "Sign In"}
-                      </Button>
-                    </form>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+                  {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {isPending ? "Signing in…" : "Sign In"}
+                </Button>
+              </form>
 
               {/* Footer */}
               <motion.p

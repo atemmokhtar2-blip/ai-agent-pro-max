@@ -242,7 +242,9 @@ export const workspacesApi = {
       body: JSON.stringify(payload),
     }),
   push: (id: string) =>
-    apiFetch<{ message: string }>(`/workspaces/${id}/push`, { method: "POST" }),
+    apiFetch<{ pushed: boolean; branch: string }>(`/workspaces/${id}/push`, { method: "POST" }),
+  pull: (id: string) =>
+    apiFetch<{ pulled: boolean; branch: string }>(`/workspaces/${id}/pull`, { method: "POST" }),
   pr: (id: string, payload: { title: string; body?: string; draft?: boolean }) =>
     apiFetch<{ message: string; url: string; number: number }>(`/workspaces/${id}/pr`, {
       method: "POST",

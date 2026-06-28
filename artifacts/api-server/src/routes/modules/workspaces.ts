@@ -22,7 +22,7 @@ import { eq, and, desc } from "drizzle-orm";
 import { decrypt, createClient, createPullRequest, buildAuthenticatedCloneUrl } from "@workspace/github";
 import {
   createWorkspace, getWorkspaceDiff, commitWorkspaceChanges,
-  pushWorkspaceBranch, undoWorkspaceLastCommit, rollbackWorkspace,
+  pushWorkspaceBranch, pullWorkspaceBranch, undoWorkspaceLastCommit, rollbackWorkspace,
   resetWorkspace, getWorkspaceLog, getWorkspaceBranch,
   deleteWorkspaceSession, generateBranchName, getWorkspacePath,
 } from "@workspace/repo-agent";
@@ -297,8 +297,24 @@ router.post("/:id/push", async (req, res) => {
 
   if (!assertWorkspaceExists(session, res)) return;
 
+  // Refresh the remote auth token before pushing so expired PATs don't block
+  let pat: string | undefined;
+  let cloneUrl: string | undefined;
   try {
-    await pushWorkspaceBranch(session.localPath, session.currentBranch);
+    const conn = await db.select().from(githubConnectionsTable)
+      .where(eq(githubConnectionsTable.userId, userId)).limit(1);
+    if (conn[0]) {
+      pat = decrypt(conn[0].encryptedToken);
+      const repo = await db.select({ cloneUrl: repositoryImportsTable.cloneUrl })
+        .from(repositoryImportsTable)
+        .where(eq(repositoryImportsTable.id, session.repositoryImportId!))
+        .limit(1);
+      cloneUrl = repo[0]?.cloneUrl ?? undefined;
+    }
+  } catch { /* best-effort — fall back to existing remote */ }
+
+  try {
+    await pushWorkspaceBranch(session.localPath, session.currentBranch, pat, cloneUrl);
     await db.update(workspaceSessionsTable).set({ status: "pushed" }).where(eq(workspaceSessionsTable.id, session.id));
     await logGitOp(userId, session.id, session.repositoryImportId, "push", {
       branch: session.currentBranch,
@@ -309,6 +325,45 @@ router.post("/:id/push", async (req, res) => {
     const msg = err instanceof Error ? err.message : String(err);
     await logGitOp(userId, session.id, session.repositoryImportId, "push", { status: "failed", errorMessage: msg });
     res.status(500).json({ error: `Push failed: ${msg}` });
+  }
+});
+
+// ─── POST /:id/pull ───────────────────────────────────────────────────────────
+
+router.post("/:id/pull", async (req, res) => {
+  const userId = req.user!.sub;
+  const session = await getSession(userId, req.params["id"] as string, res);
+  if (!session) return;
+
+  if (!assertWorkspaceExists(session, res)) return;
+
+  // Refresh the remote auth token before pulling
+  let pat: string | undefined;
+  let cloneUrl: string | undefined;
+  try {
+    const conn = await db.select().from(githubConnectionsTable)
+      .where(eq(githubConnectionsTable.userId, userId)).limit(1);
+    if (conn[0]) {
+      pat = decrypt(conn[0].encryptedToken);
+      const repo = await db.select({ cloneUrl: repositoryImportsTable.cloneUrl })
+        .from(repositoryImportsTable)
+        .where(eq(repositoryImportsTable.id, session.repositoryImportId!))
+        .limit(1);
+      cloneUrl = repo[0]?.cloneUrl ?? undefined;
+    }
+  } catch { /* best-effort */ }
+
+  try {
+    await pullWorkspaceBranch(session.localPath, session.currentBranch, pat, cloneUrl);
+    await logGitOp(userId, session.id, session.repositoryImportId, "pull", {
+      branch: session.currentBranch,
+      status: "success",
+    });
+    res.json({ pulled: true, branch: session.currentBranch });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    await logGitOp(userId, session.id, session.repositoryImportId, "pull", { status: "failed", errorMessage: msg });
+    res.status(500).json({ error: `Pull failed: ${msg}` });
   }
 });
 
