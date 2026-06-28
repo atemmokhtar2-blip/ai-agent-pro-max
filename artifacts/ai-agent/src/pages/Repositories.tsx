@@ -458,6 +458,12 @@ export default function Repositories() {
   const { data, isLoading, error } = useQuery({
     queryKey: ["repositories"],
     queryFn: repositoriesApi.list,
+    // Poll every 3 s while any repo is still cloning/analyzing
+    refetchInterval: (query) => {
+      const items = (query.state.data as { items?: { status: string }[] } | undefined)?.items ?? [];
+      const busy = items.some((r) => r.status === "cloning" || r.status === "analyzing");
+      return busy ? 3000 : false;
+    },
   });
 
   const { data: ghStatus } = useQuery({

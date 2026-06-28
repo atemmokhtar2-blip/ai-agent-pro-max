@@ -134,9 +134,12 @@ export default function Register() {
           setLocation("/chat");
         },
         onError: (err) => {
-          const message =
-            (err as { data?: { error?: string } }).data?.error ||
-            "An error occurred. Please try again.";
+          // ApiError puts body in .data.error; err.message has "HTTP 4xx: <text>" format
+          const apiMsg = (err as { data?: { error?: string } }).data?.error;
+          const rawMsg = (err as Error).message ?? "";
+          // Strip the "HTTP 4xx Status: " prefix from err.message
+          const fallback = rawMsg.replace(/^HTTP \d+ [^:]+:\s*/i, "").trim();
+          const message = apiMsg || fallback || "An error occurred. Please try again.";
 
           // Surface duplicate-field errors inline when possible
           if (/username.*taken|already.*username/i.test(message)) {
@@ -145,6 +148,9 @@ export default function Register() {
           } else if (/email.*taken|already.*email|email.*use/i.test(message)) {
             form.setError("email", { message: "An account with this email already exists." });
             form.setFocus("email");
+          } else if (/password/i.test(message)) {
+            form.setError("password", { message });
+            form.setFocus("password");
           } else {
             toast.error("Registration failed", { description: message });
           }
