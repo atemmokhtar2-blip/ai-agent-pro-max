@@ -310,6 +310,23 @@ router.post("/reset-password", validateBody(resetPasswordSchema), async (_req, r
   res.status(501).json({ error: "Password reset requires email configuration. Coming soon." });
 });
 
+// ─── GET /oauth/providers — list which providers are available ────────────────
+
+router.get("/oauth/providers", async (_req, res) => {
+  const known = ["google", "github"];
+  const available: string[] = [];
+  for (const p of known) {
+    if (!oauthRegistry.has(p)) continue;
+    try {
+      await oauthRegistry.get(p).getAuthorizationUrl("__probe__");
+      available.push(p);
+    } catch {
+      // not configured or disabled — skip
+    }
+  }
+  res.json({ providers: available });
+});
+
 // ─── GET /oauth/:provider/authorize ──────────────────────────────────────────
 
 router.get("/oauth/:provider/authorize", async (req, res) => {

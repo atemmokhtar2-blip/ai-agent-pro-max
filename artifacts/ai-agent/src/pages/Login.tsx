@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { Loader2, Eye, EyeOff, Sparkles } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
 const loginSchema = z.object({
@@ -126,14 +126,32 @@ function OAuthButton({ provider, disabled, loading, onClick }: OAuthButtonProps)
 export default function Login() {
   const [, setLocation] = useLocation();
   const { login: authenticate, isAuthenticated } = useAuth();
-  const [showPassword,  setShowPassword]  = useState(false);
-  const [loadingOAuth,  setLoadingOAuth]  = useState<OAuthProvider | null>(null);
-  const [oauthError,    setOauthError]    = useState<string | null>(null);
-  const [showEmailForm, setShowEmailForm] = useState(false);
+  const [showPassword,    setShowPassword]    = useState(false);
+  const [loadingOAuth,    setLoadingOAuth]    = useState<OAuthProvider | null>(null);
+  const [oauthError,      setOauthError]      = useState<string | null>(null);
+  const [availableOAuth,  setAvailableOAuth]  = useState<string[] | null>(null);
+  const [showEmailForm,   setShowEmailForm]   = useState(false);
+  const fetchedRef = useRef(false);
 
   useEffect(() => {
     if (isAuthenticated) setLocation("/dashboard");
   }, [isAuthenticated, setLocation]);
+
+  useEffect(() => {
+    if (fetchedRef.current) return;
+    fetchedRef.current = true;
+    fetch("/api/v1/auth/oauth/providers")
+      .then((r) => r.json())
+      .then((body: { providers?: string[] }) => {
+        const providers = body.providers ?? [];
+        setAvailableOAuth(providers);
+        if (providers.length === 0) setShowEmailForm(true);
+      })
+      .catch(() => {
+        setAvailableOAuth([]);
+        setShowEmailForm(true);
+      });
+  }, []);
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -211,57 +229,65 @@ export default function Login() {
                 <p className="text-sm text-muted-foreground">Sign in to continue to AI Agent</p>
               </motion.div>
 
-              {/* OAuth buttons */}
-              <motion.div
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.15, duration: 0.35 }}
-                className="space-y-3"
-              >
-                <OAuthButton
-                  provider="google"
-                  loading={loadingOAuth === "google"}
-                  disabled={anyOAuthLoading || isPending}
-                  onClick={() => handleOAuth("google")}
-                />
-                <OAuthButton
-                  provider="github"
-                  loading={loadingOAuth === "github"}
-                  disabled={anyOAuthLoading || isPending}
-                  onClick={() => handleOAuth("github")}
-                />
-
-                <AnimatePresence>
-                  {oauthError && (
-                    <motion.p
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: "auto" }}
-                      exit={{ opacity: 0, height: 0 }}
-                      className="text-xs text-destructive text-center px-2"
-                    >
-                      {oauthError}
-                    </motion.p>
-                  )}
-                </AnimatePresence>
-              </motion.div>
-
-              {/* Divider */}
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.2, duration: 0.35 }}
-                className="relative flex items-center"
-              >
-                <div className="flex-1 h-px bg-border/60" />
-                <button
-                  type="button"
-                  onClick={() => setShowEmailForm(v => !v)}
-                  className="mx-3 text-xs text-muted-foreground hover:text-foreground transition-colors select-none whitespace-nowrap"
+              {/* OAuth buttons — only when at least one provider is available */}
+              {availableOAuth !== null && availableOAuth.length > 0 && (
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.15, duration: 0.35 }}
+                  className="space-y-3"
                 >
-                  or sign in with email
-                </button>
-                <div className="flex-1 h-px bg-border/60" />
-              </motion.div>
+                  {availableOAuth.includes("google") && (
+                    <OAuthButton
+                      provider="google"
+                      loading={loadingOAuth === "google"}
+                      disabled={anyOAuthLoading || isPending}
+                      onClick={() => handleOAuth("google")}
+                    />
+                  )}
+                  {availableOAuth.includes("github") && (
+                    <OAuthButton
+                      provider="github"
+                      loading={loadingOAuth === "github"}
+                      disabled={anyOAuthLoading || isPending}
+                      onClick={() => handleOAuth("github")}
+                    />
+                  )}
+
+                  <AnimatePresence>
+                    {oauthError && (
+                      <motion.p
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="text-xs text-destructive text-center px-2"
+                      >
+                        {oauthError}
+                      </motion.p>
+                    )}
+                  </AnimatePresence>
+                </motion.div>
+              )}
+
+              {/* Divider — only shown when OAuth buttons are visible */}
+              {availableOAuth !== null && availableOAuth.length > 0 && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.2, duration: 0.35 }}
+                  className="relative flex items-center"
+                >
+                  <div className="flex-1 h-px bg-border/60" />
+                  <button
+                    type="button"
+                    onClick={() => setShowEmailForm(v => !v)}
+                    className="mx-3 text-xs text-muted-foreground hover:text-foreground transition-colors select-none whitespace-nowrap"
+                  >
+                    {showEmailForm ? "hide email form" : "or sign in with email"}
+                  </button>
+                  <div className="flex-1 h-px bg-border/60" />
+                </motion.div>
+              )}
 
               {/* Email / password form — collapsible */}
               <AnimatePresence>
