@@ -54,4 +54,4 @@ await esbuild({
   ],
 });
 
-console.log(`✓ Vercel handler built → ${outdir}/app.cjs`);
+console.log(`✓ Vercel handler built → ${outdir}/app.cjs (+ pino worker files)`);
