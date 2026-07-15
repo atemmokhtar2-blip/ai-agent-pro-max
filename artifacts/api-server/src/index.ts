@@ -2,7 +2,7 @@ import app from "./app";
 import { logger } from "./lib/logger";
 
 const rawPort = process.env["PORT"];
-const port = Number(rawPort ?? "8000");
+const port = Number(rawPort ?? "8080");
 
 if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
