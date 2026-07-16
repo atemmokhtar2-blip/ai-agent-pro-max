@@ -39,7 +39,6 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(import.meta.dirname, "src"),
-      "@assets": path.resolve(import.meta.dirname, "..", "..", "attached_assets"),
     },
     dedupe: ["react", "react-dom"],
   },
@@ -47,6 +46,25 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return undefined;
+          // React core — must be isolated so downstream chunks can share it without circular refs
+          if (/node_modules\/(react|react-dom|scheduler|react-is|use-sync-external-store)\//.test(id)) return "react-vendor";
+          if (id.includes("/@radix-ui/")) return "ui-radix";
+          if (/\/(framer-motion|motion-dom|motion-utils)\//.test(id)) return "ui-motion";
+          if (id.includes("/@tanstack/")) return "query-vendor";
+          if (id.includes("/lucide-react/")) return "icons";
+          if (id.includes("/zod/") || id.includes("/react-hook-form/") || id.includes("/@hookform/")) return "forms";
+          if (id.includes("/date-fns/")) return "date-fns";
+          if (id.includes("/cmdk/") || id.includes("/sonner/") || id.includes("/vaul/")) return "ui-extras";
+          if (id.includes("/wouter/")) return "router";
+          // No catch-all — let Rollup group remaining node_modules into the app chunk
+          return undefined;
+        },
+      },
+    },
   },
   server: {
     port,
