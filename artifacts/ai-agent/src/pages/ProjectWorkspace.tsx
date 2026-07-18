@@ -14,8 +14,9 @@ import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/componen
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ChevronLeft, Play, Settings, Send, Loader2, Bot, User, Copy, Check, RefreshCw } from "lucide-react";
+import { ChevronLeft, Play, Settings, Send, Loader2, RefreshCw, Bot, Copy, Check } from "lucide-react";
 import { toast } from "sonner";
+import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer";
 
 // ── Workspace message bubble ────────────────────────────────────────────────────
 
@@ -24,63 +25,51 @@ function WorkspaceMessageBubble({ msg }: { msg: { id: string; role: string; cont
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
-    const doIt = () => {
+    navigator.clipboard.writeText(msg.content).then(() => {
       setCopied(true);
-      toast.success("Copied to clipboard");
+      toast.success("تم النسخ");
       setTimeout(() => setCopied(false), 2000);
-    };
-    navigator.clipboard.writeText(msg.content).then(doIt).catch(() => {
-      const el = document.createElement("textarea");
-      el.value = msg.content;
-      el.style.position = "fixed";
-      el.style.left = "-9999px";
-      document.body.appendChild(el);
-      el.select();
-      document.execCommand("copy");
-      document.body.removeChild(el);
-      doIt();
     });
   };
 
-  return (
-    <div className={`flex gap-2 group ${isUser ? "justify-end" : "justify-start"}`}>
-      {!isUser && (
-        <div className="mt-0.5 h-6 w-6 flex-shrink-0 rounded-full bg-primary/10 flex items-center justify-center">
-          <Bot className="h-3 w-3 text-primary" />
+  if (isUser) {
+    return (
+      <div className="flex justify-end">
+        <div className="max-w-[85%] rounded-[16px] rounded-tr-[4px] bg-zinc-800 border border-zinc-700/50 px-3 py-2 text-xs text-zinc-100 leading-relaxed shadow-sm">
+          <p className="whitespace-pre-wrap" dir="auto">{msg.content}</p>
         </div>
-      )}
-      <div
-        className={`relative max-w-[85%] rounded-lg px-3 py-2 text-xs break-words ${
-          isUser
-            ? "bg-primary text-primary-foreground rounded-tr-none"
-            : "bg-muted text-foreground rounded-tl-none pr-7"
-        }`}
-        style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}
-      >
-        {!isUser && (
-          <button
-            onClick={handleCopy}
-            aria-label={copied ? "Copied!" : "Copy message"}
-            title={copied ? "Copied!" : "Copy message"}
-            className="absolute right-1.5 top-1.5 rounded p-0.5 opacity-100 transition-opacity text-muted-foreground hover:text-foreground hover:bg-background/60"
-          >
-            {copied ? (
-              <span className="flex items-center gap-0.5 text-[9px] font-semibold text-green-500">
-                <Check className="h-2.5 w-2.5 flex-shrink-0" />
-                Copied
-              </span>
-            ) : (
-              <Copy className="h-3 w-3" />
-            )}
-          </button>
-        )}
-        {msg.content}
       </div>
-      {isUser && (
-        <div className="mt-0.5 h-6 w-6 flex-shrink-0 rounded-full bg-primary/10 flex items-center justify-center">
-          <User className="h-3 w-3 text-primary" />
+    );
+  }
+
+  return (
+    <div className="flex gap-2 items-start group">
+      <div className="mt-0.5 h-5 w-5 flex-shrink-0 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center">
+        <svg width="10" height="10" viewBox="0 0 16 16" fill="none" className="text-primary">
+          <path d="M8 2L9.8 6.2L14 8L9.8 9.8L8 14L6.2 9.8L2 8L6.2 6.2L8 2Z" fill="currentColor" opacity="0.9" />
+        </svg>
+      </div>
+      <div className="flex-1 min-w-0 relative">
+        <button
+          onClick={handleCopy}
+          className="absolute -right-1 top-0 rounded p-0.5 opacity-0 group-hover:opacity-50 hover:!opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
+          aria-label="نسخ"
+        >
+          {copied ? (
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="text-green-400">
+              <polyline points="1.5,5 3.5,7.5 8.5,2.5" />
+            </svg>
+          ) : (
+            <svg width="10" height="10" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.3">
+              <rect x="3.5" y="3.5" width="6.5" height="6.5" rx="1" />
+              <path d="M2.5 7.5H1.5a1 1 0 01-1-1V1.5a1 1 0 011-1h5a1 1 0 011 1v1" />
+            </svg>
+          )}
+        </button>
+        <div className="text-xs text-foreground leading-relaxed pr-4">
+          <MarkdownRenderer content={msg.content} />
         </div>
-      )}
+      </div>
     </div>
   );
 }
