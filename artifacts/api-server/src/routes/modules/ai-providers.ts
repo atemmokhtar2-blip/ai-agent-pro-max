@@ -21,7 +21,7 @@
  */
 
 import { Router } from "express";
-import { z } from "zod/v4";
+import { z } from "zod";
 import { authenticate as requireAuth } from "../../middlewares/authenticate.js";
 import { requireRole }    from "../../middlewares/authorize.js";
 import { validateBody }   from "../../middlewares/validate.js";

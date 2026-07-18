@@ -1,6 +1,6 @@
 import { pgTable, text, boolean, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
-import { z } from "zod/v4";
+import { z } from "zod";
 
 export const roleEnum = ["user", "moderator", "admin", "super_admin"] as const;
 export type UserRole = typeof roleEnum[number];
