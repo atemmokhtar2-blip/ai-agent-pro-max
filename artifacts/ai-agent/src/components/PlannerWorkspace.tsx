@@ -784,6 +784,10 @@ export function PlannerWorkspace({
   const [historyViewing, setHistoryViewing] = useState<{ content: string; model?: string } | null>(null);
   const [showFiles, setShowFiles] = useState(false);
 
+  // ── Inline preview panel ─────────────────────────────────────────────────────
+  const [showPreview, setShowPreview] = useState(false);
+  const [activePreviewUrl, setActivePreviewUrl] = useState<string | null>(null);
+
   // ── Live execution logs ─────────────────────────────────────────────────────
   const [execLogs, setExecLogs] = useState<LogEntry[]>([]);
   const [execActive, setExecActive] = useState(false);
@@ -834,6 +838,15 @@ export function PlannerWorkspace({
     }
     return () => { document.title = base; };
   }, [isStreaming, streamingStage, phase]);
+
+  // ── Track previewUrl across phases ──────────────────────────────────────────
+
+  useEffect(() => {
+    if (phase.kind === "verified" && phase.previewUrl) {
+      setActivePreviewUrl(phase.previewUrl);
+      setShowPreview(true);
+    }
+  }, [phase]);
 
   // ── Auto-scroll ─────────────────────────────────────────────────────────────
 
@@ -1396,10 +1409,16 @@ export function PlannerWorkspace({
                   allPassed={phase.allPassed}
                   healthReport={phase.healthReport ?? task?.healthReport}
                   previewUrl={phase.previewUrl}
-                  onPreview={() => setShowFiles(true)}
+                  onPreview={() => {
+                    if (phase.previewUrl) { setActivePreviewUrl(phase.previewUrl); setShowPreview(true); }
+                    else setShowFiles(true);
+                  }}
                   onRetryBuild={() => handleRetryExecution(phase.taskId, blueprint)}
                   onRetryVerification={() => handleRetryVerification(phase.taskId, blueprint)}
-                  onRetryPreview={() => setShowFiles(true)}
+                  onRetryPreview={() => {
+                    if (phase.previewUrl) { setActivePreviewUrl(phase.previewUrl); setShowPreview(true); }
+                    else setShowFiles(true);
+                  }}
                 />
               </div>
             </div>
@@ -1464,7 +1483,10 @@ export function PlannerWorkspace({
   // ── Render ───────────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex h-full flex-col min-w-0 overflow-hidden">
+    <div className="flex h-full min-w-0 overflow-hidden">
+
+      {/* ── Chat column ──────────────────────────────────────────────────────── */}
+      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
 
       {/* ── Messages ─────────────────────────────────────────────────────────── */}
       <div
@@ -1595,10 +1617,60 @@ export function PlannerWorkspace({
                   {streamingStage?.name ?? "Planning…"}
                 </span>
               )}
+              {activePreviewUrl && (
+                <button
+                  onClick={() => setShowPreview((p) => !p)}
+                  className={`flex items-center gap-1 rounded px-2 py-1 text-[10px] transition-colors ${showPreview ? "text-primary bg-primary/10" : "text-muted-foreground/50 hover:text-foreground hover:bg-muted/40"}`}
+                >
+                  <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.3">
+                    <rect x="1" y="1.5" width="8" height="7" rx="1" />
+                    <line x1="1" y1="3.5" x2="9" y2="3.5" />
+                  </svg>
+                  معاينة
+                </button>
+              )}
             </div>
           </div>
         </div>
       </div>
+
+      </div>{/* end chat column */}
+
+      {/* ── Right: Inline preview panel ───────────────────────────────────────── */}
+      {showPreview && activePreviewUrl && (
+        <div className="flex-shrink-0 w-[420px] border-l border-border/50 bg-card/20 flex flex-col overflow-hidden">
+          <div className="flex-shrink-0 border-b border-border/40 px-3 py-2.5 flex items-center gap-2">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50">معاينة</span>
+            <a
+              href={activePreviewUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="ml-auto text-[10px] text-primary/60 hover:text-primary transition-colors"
+            >
+              فتح ↗
+            </a>
+            <button
+              onClick={() => setShowPreview(false)}
+              className="text-muted-foreground/40 hover:text-foreground transition-colors"
+              aria-label="إغلاق المعاينة"
+            >
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                <line x1="1" y1="1" x2="9" y2="9" /><line x1="9" y1="1" x2="1" y2="9" />
+              </svg>
+            </button>
+          </div>
+          <div className="flex-1 overflow-hidden bg-white">
+            <iframe
+              src={activePreviewUrl}
+              className="w-full h-full border-0"
+              title="معاينة المشروع"
+              sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-pointer-lock allow-top-navigation-by-user-activation"
+              referrerPolicy="no-referrer"
+            />
+          </div>
+        </div>
+      )}
 
       {/* ── History blueprint viewer ──────────────────────────────────────────── */}
       {historyViewing && (
