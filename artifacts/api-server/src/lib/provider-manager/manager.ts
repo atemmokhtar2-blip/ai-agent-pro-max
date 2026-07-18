@@ -89,9 +89,11 @@ import { deepseekAdapter    } from "./adapters/deepseek.js";
 import { xaiAdapter         } from "./adapters/xai.js";
 import { cohereAdapter      } from "./adapters/cohere.js";
 import { huggingfaceAdapter } from "./adapters/huggingface.js";
+import { hfSpaceAdapter     } from "./adapters/hf-space.js";
 import { ModelDiscoveryService } from "./model-discovery.js";
 
 const ALL_ADAPTERS = [
+  hfSpaceAdapter,
   openRouterAdapter, geminiAdapter, groqAdapter, cloudflareAdapter, mistralAdapter,
   openaiAdapter, anthropicAdapter, deepseekAdapter, xaiAdapter, cohereAdapter, huggingfaceAdapter,
 ];
@@ -111,6 +113,22 @@ function ema(current: number, next: number): number {
 // ── Default provider definitions (seeded on first run) ────────────────────────
 
 const DEFAULT_PROVIDER_SEEDS: InsertAiProviderRegistry[] = [
+  {
+    slug: "hf-space", displayName: "HF Space (Free)",
+    baseUrl: "https://7atemmmmm-replit-agent.hf.space",
+    docsUrl: "https://huggingface.co/spaces/7atemmmmm/replit-Agent",
+    enabled: true, priority: 0,
+    routingStrategy: "round-robin",
+    healthScore: 100, status: "healthy",
+    totalRequests: 0, successCount: 0, failureCount: 0, avgLatencyMs: 0,
+    capabilities: { streaming: false, functionCalling: false, vision: false },
+    defaultModels: {
+      planning: "hf-space-qwen", "code-gen": "hf-space-qwen",
+      debugging: "hf-space-qwen", documentation: "hf-space-qwen",
+      review: "hf-space-qwen", verification: "hf-space-qwen",
+      general: "hf-space-qwen",
+    },
+  },
   {
     slug: "openrouter", displayName: "OpenRouter",
     baseUrl: "https://openrouter.ai/api/v1",
@@ -325,6 +343,7 @@ export class ProviderManager {
       await this.seedProvidersIfEmpty();
       await this.loadFromDB();
       this.seedEnvKeys();
+      await this.seedHFSpaceDefaultKey();
       this.monitor.start();
       this.discovery.start();
       const total = [...this.providers.values()].reduce((s, p) => s + p.keys.length, 0);
@@ -842,6 +861,40 @@ export class ProviderManager {
       lastRun: this.discovery.getLastRunTime()?.toISOString() ?? null,
       isRunning: this.discovery.isRunning(),
     };
+  }
+
+  // ── Private: auto-seed HF Space default key (no env var required) ───────────
+
+  private async seedHFSpaceDefaultKey(): Promise<void> {
+    const p = this.providers.get("hf-space");
+    if (!p) return;
+
+    // If there's already at least one key (from DB or env), nothing to do
+    if (p.keys.length > 0) return;
+
+    const PLACEHOLDER = "hf-space-default";
+    const id           = genId();
+    const keyEncrypted = encryptKey(PLACEHOLDER);
+    const prefix       = keyPrefix(PLACEHOLDER);
+
+    const runtime: RuntimeKeyState = {
+      id, providerSlug: "hf-space", name: "built-in",
+      keyEncrypted, keyPrefix: prefix,
+      enabled: true, status: "active",
+      totalRequests: 0, successCount: 0, failureCount: 0,
+      consecutiveFailures: 0, avgResponseTimeMs: 0,
+    };
+    p.keys.push(runtime);
+
+    await db.insert(aiProviderKeysTable).values({
+      id, providerSlug: "hf-space", name: "built-in",
+      keyEncrypted, keyPrefix: prefix,
+      enabled: true, status: "active",
+      totalRequests: 0, successCount: 0, failureCount: 0,
+      consecutiveFailures: 0, avgResponseTimeMs: 0,
+    }).onConflictDoNothing().catch(() => {});
+
+    console.log("[ProviderManager] HF Space default key seeded automatically");
   }
 
   // ── Private: DB initialization ──────────────────────────────────────────────

@@ -23,9 +23,11 @@
  *   Stage 8  Blueprint Finalization
  */
 
-const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+const OPENROUTER_URL  = "https://openrouter.ai/api/v1/chat/completions";
+const HF_SPACE_URL    = "https://7atemmmmm-replit-agent.hf.space";
 const TIMEOUT_MS = 120_000;
 const THINKING_TIMEOUT_MS = 45_000;
+const HF_SPACE_MAX_TOKENS = 1900; // Space slider cap is 2048; leave headroom
 
 // Primary thinking model — deepseek-r1 naturally emits <think>...</think> reasoning
 const THINKING_MODEL = "deepseek/deepseek-r1:free";
@@ -311,6 +313,114 @@ function parseThinkingChunk(
   }
 
   return { thinkingText: "", done: false };
+}
+
+// ── HF Space (Gradio) non-streaming call ───────────────────────────────────────
+
+async function callHFSpace(
+  messages: { role: string; content: string }[],
+  maxTokens: number,
+  temperature: number,
+  signal: AbortSignal,
+): Promise<string> {
+  // Extract system + build user message
+  const systemMsgs = messages.filter(m => m.role === "system");
+  const turns      = messages.filter(m => m.role !== "system");
+  const systemMsg  = systemMsgs.map(m => m.content).join("\n\n").slice(0, 3000);
+
+  const history   = turns.slice(0, -1);
+  const lastTurn  = turns[turns.length - 1];
+  const userText  = lastTurn?.content ?? "";
+
+  let message: string;
+  if (history.length === 0) {
+    message = userText;
+  } else {
+    const ctx = history
+      .slice(-4)
+      .map(m => `${m.role === "user" ? "User" : "Assistant"}: ${m.content.slice(0, 400)}`)
+      .join("\n");
+    message = `${ctx}\n\nUser: ${userText}`;
+  }
+  message = message.slice(0, 5000);
+
+  const tokens = Math.min(maxTokens, HF_SPACE_MAX_TOKENS);
+
+  // Step 1: POST to start Gradio prediction
+  const postResp = await fetch(`${HF_SPACE_URL}/gradio_api/call/respond`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ data: [message, systemMsg, tokens, temperature, 0.95] }),
+    signal: AbortSignal.any
+      ? AbortSignal.any([signal, AbortSignal.timeout(30_000)])
+      : AbortSignal.timeout(30_000),
+  });
+
+  if (!postResp.ok) {
+    const body = await postResp.text().catch(() => "");
+    throw new Error(`HF Space POST failed ${postResp.status}: ${body.slice(0, 120)}`);
+  }
+
+  const { event_id } = await postResp.json() as { event_id?: string };
+  if (!event_id) throw new Error("HF Space: no event_id returned");
+
+  // Step 2: GET SSE stream for result
+  const getResp = await fetch(`${HF_SPACE_URL}/gradio_api/call/respond/${event_id}`, {
+    signal: AbortSignal.any
+      ? AbortSignal.any([signal, AbortSignal.timeout(TIMEOUT_MS)])
+      : AbortSignal.timeout(TIMEOUT_MS),
+  });
+
+  if (!getResp.ok) throw new Error(`HF Space GET failed ${getResp.status}`);
+
+  const reader  = getResp.body?.getReader();
+  if (!reader) throw new Error("HF Space: no response body");
+
+  const decoder = new TextDecoder();
+  let buffer    = "";
+  let lastEvent = "";
+  let lastData  = "";
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+
+      for (const line of lines) {
+        const t = line.trim();
+        if (t.startsWith("event:")) {
+          lastEvent = t.slice(6).trim();
+        } else if (t.startsWith("data:")) {
+          const raw = t.slice(5).trim();
+          if (lastEvent === "error") throw new Error(`HF Space error event: ${raw}`);
+          if (lastEvent === "complete") {
+            try {
+              const parsed = JSON.parse(raw) as string | string[];
+              return Array.isArray(parsed) ? (parsed[0] ?? "") : String(parsed);
+            } catch {
+              return raw.replace(/^"|"$/g, "");
+            }
+          }
+          if (lastEvent === "generating") {
+            try {
+              const parsed = JSON.parse(raw) as string;
+              lastData = typeof parsed === "string" ? parsed : raw;
+            } catch {
+              lastData = raw.replace(/^"|"$/g, "");
+            }
+          }
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  if (!lastData) throw new Error("HF Space stream ended without result");
+  return lastData;
 }
 
 // ── OpenRouter streaming call ──────────────────────────────────────────────────
@@ -643,23 +753,57 @@ async function runMultiModelBlueprint(
     finalModel = model;
   };
 
-  // ── Attempt 1: Full blueprint with arch model (kimi-k2) ──────────────────────
-  // Try to get sections 1-12 in one shot with the primary arch model
+  const archMessages = [
+    { role: "system", content: ARCH_SYSTEM_PROMPT + thinkingContext_ },
+    ...history.slice(-4).map((m) => ({ role: m.role, content: m.content })),
+    { role: "user", content: userMessage },
+  ];
+
   const fullPlanMessages = [
-    {
-      role: "system",
-      content: SYSTEM_PROMPT + thinkingContext_,
-    },
+    { role: "system", content: SYSTEM_PROMPT + thinkingContext_ },
     ...history.slice(-6).map((m) => ({ role: m.role, content: m.content })),
     { role: "user", content: userMessage },
   ];
 
-  // Notify which model is starting
-  onEvent({ type: "model_switch", stage: 3, toModel: ARCH_MODELS[0] as string, taskType: "architecture" });
-
   let succeeded = false;
 
-  if (apiKey) {
+  // ── Attempt 1: HF Space — two-phase (arch sections 1-6, then tech 7-12) ─────
+  // HF Space is the primary FREE provider; max 1900 tokens per call so we split.
+  onEvent({ type: "model_switch", stage: 3, toModel: "HF-Space", taskType: "architecture" });
+  try {
+    console.log("[HF_SPACE] Starting arch phase (sections 1-6)");
+    const archContent = await callHFSpace(archMessages, HF_SPACE_MAX_TOKENS, 0.3, signal);
+
+    if (archContent && !signal.aborted) {
+      handleChunk(archContent, "HF-Space");
+      finalModel = "HF-Space (Qwen2.5-Coder)";
+
+      // Phase 2: sections 7-12
+      console.log("[HF_SPACE] Starting tech phase (sections 7-12)");
+      const techMessages = [
+        { role: "system", content: TECH_SYSTEM_PROMPT },
+        { role: "user", content: userMessage },
+        { role: "assistant", content: archContent },
+        { role: "user", content: "Now write sections 7-12 only." },
+      ];
+      const techContent = await callHFSpace(techMessages, HF_SPACE_MAX_TOKENS, 0.3, signal);
+
+      if (techContent && !signal.aborted) {
+        handleChunk("\n\n" + techContent, "HF-Space");
+        succeeded = true;
+        console.log(`[HF_SPACE] Both phases done, total length=${accumulated.length}`);
+      }
+    }
+  } catch (err) {
+    if (signal.aborted) return { content: accumulated, model: finalModel };
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`[HF_SPACE_FAILED] falling back to OpenRouter: ${msg.slice(0, 120)}`);
+  }
+
+  // ── Attempt 2: OpenRouter streaming models ────────────────────────────────
+  if (!succeeded && apiKey && !signal.aborted) {
+    onEvent({ type: "model_switch", stage: 3, toModel: ARCH_MODELS[0] as string, taskType: "architecture" });
+
     for (let i = 0; i < ARCH_MODELS.length; i++) {
       const model = ARCH_MODELS[i]!;
       if (signal.aborted) break;
@@ -690,7 +834,7 @@ async function runMultiModelBlueprint(
     }
   }
 
-  // ── Provider-manager fallback ────────────────────────────────────────────────
+  // ── Attempt 3: ProviderManager completeFn fallback ───────────────────────
   if (!succeeded && completeFn && !signal.aborted) {
     console.log("[FALLBACK_ACTIVATED] using ProviderManager completeFn");
     try {
