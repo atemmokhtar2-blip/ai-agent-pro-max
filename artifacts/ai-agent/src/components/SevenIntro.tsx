@@ -17,6 +17,8 @@ import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 const INTRO_KEY = "seven_intro_seen";
 
 export function hasSeenIntro(): boolean {
+  // Skip intro in development so the preview pane shows the app immediately
+  if (import.meta.env.DEV) return true;
   try { return !!localStorage.getItem(INTRO_KEY); } catch { return false; }
 }
 
