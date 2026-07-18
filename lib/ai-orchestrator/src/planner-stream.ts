@@ -28,6 +28,8 @@ const HF_SPACE_URL    = "https://7atemmmmm-replit-agent.hf.space";
 const TIMEOUT_MS = 120_000;
 const THINKING_TIMEOUT_MS = 45_000;
 const HF_SPACE_MAX_TOKENS = 1900; // Space slider cap is 2048; leave headroom
+const HF_SPACE_RETRIES   = 3;    // retry on cold-start / error events
+const HF_SPACE_RETRY_DELAY_MS = 8_000; // wait for Space to wake up
 
 // Primary thinking model — deepseek-r1 naturally emits <think>...</think> reasoning
 const THINKING_MODEL = "deepseek/deepseek-r1:free";
@@ -35,17 +37,21 @@ const THINKING_MODEL = "deepseek/deepseek-r1:free";
 const THINKING_FALLBACK_MODEL = "deepseek/deepseek-chat-v3-0324";
 
 // Architecture-focused models (sections 1-6): planning affinity
+// Only include models that work without credits (free tier or very cheap)
 const ARCH_MODELS = [
-  "moonshotai/kimi-k2",
+  "google/gemma-2-9b-it:free",
+  "meta-llama/llama-3.2-3b-instruct:free",
+  "qwen/qwen3-8b:free",
   "deepseek/deepseek-chat-v3-0324",
-  "meta-llama/llama-3.1-8b-instruct:free",
+  "moonshotai/kimi-k2",
 ] as const;
 
 // Technical/delivery models (sections 7-12): coding + deployment affinity
 const TECH_MODELS = [
+  "qwen/qwen3-8b:free",
+  "google/gemma-2-9b-it:free",
   "deepseek/deepseek-chat-v3-0324",
   "moonshotai/kimi-k2",
-  "meta-llama/llama-3.1-8b-instruct:free",
 ] as const;
 
 type PlannerModel = string;
@@ -317,43 +323,22 @@ function parseThinkingChunk(
 
 // ── HF Space (Gradio) non-streaming call ───────────────────────────────────────
 
-async function callHFSpace(
-  messages: { role: string; content: string }[],
-  maxTokens: number,
+/** Single attempt at the Gradio POST → SSE GET cycle */
+async function callHFSpaceOnce(
+  message: string,
+  systemMsg: string,
+  tokens: number,
   temperature: number,
   signal: AbortSignal,
 ): Promise<string> {
-  // Extract system + build user message
-  const systemMsgs = messages.filter(m => m.role === "system");
-  const turns      = messages.filter(m => m.role !== "system");
-  const systemMsg  = systemMsgs.map(m => m.content).join("\n\n").slice(0, 3000);
-
-  const history   = turns.slice(0, -1);
-  const lastTurn  = turns[turns.length - 1];
-  const userText  = lastTurn?.content ?? "";
-
-  let message: string;
-  if (history.length === 0) {
-    message = userText;
-  } else {
-    const ctx = history
-      .slice(-4)
-      .map(m => `${m.role === "user" ? "User" : "Assistant"}: ${m.content.slice(0, 400)}`)
-      .join("\n");
-    message = `${ctx}\n\nUser: ${userText}`;
-  }
-  message = message.slice(0, 5000);
-
-  const tokens = Math.min(maxTokens, HF_SPACE_MAX_TOKENS);
-
   // Step 1: POST to start Gradio prediction
   const postResp = await fetch(`${HF_SPACE_URL}/gradio_api/call/respond`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ data: [message, systemMsg, tokens, temperature, 0.95] }),
     signal: AbortSignal.any
-      ? AbortSignal.any([signal, AbortSignal.timeout(30_000)])
-      : AbortSignal.timeout(30_000),
+      ? AbortSignal.any([signal, AbortSignal.timeout(45_000)])
+      : AbortSignal.timeout(45_000),
   });
 
   if (!postResp.ok) {
@@ -395,7 +380,10 @@ async function callHFSpace(
           lastEvent = t.slice(6).trim();
         } else if (t.startsWith("data:")) {
           const raw = t.slice(5).trim();
-          if (lastEvent === "error") throw new Error(`HF Space error event: ${raw}`);
+          if (lastEvent === "error") {
+            // Space cold-start or internal error — signal caller to retry
+            throw Object.assign(new Error(`HF Space error event: ${raw}`), { hfColdStart: true });
+          }
           if (lastEvent === "complete") {
             try {
               const parsed = JSON.parse(raw) as string | string[];
@@ -421,6 +409,67 @@ async function callHFSpace(
 
   if (!lastData) throw new Error("HF Space stream ended without result");
   return lastData;
+}
+
+/** Calls HF Space with retry on cold-start errors */
+async function callHFSpace(
+  messages: { role: string; content: string }[],
+  maxTokens: number,
+  temperature: number,
+  signal: AbortSignal,
+): Promise<string> {
+  // Extract system + build user message
+  const systemMsgs = messages.filter(m => m.role === "system");
+  const turns      = messages.filter(m => m.role !== "system");
+  const systemMsg  = systemMsgs.map(m => m.content).join("\n\n").slice(0, 3000);
+
+  const history  = turns.slice(0, -1);
+  const lastTurn = turns[turns.length - 1];
+  const userText = lastTurn?.content ?? "";
+
+  let message: string;
+  if (history.length === 0) {
+    message = userText;
+  } else {
+    const ctx = history
+      .slice(-4)
+      .map(m => `${m.role === "user" ? "User" : "Assistant"}: ${m.content.slice(0, 400)}`)
+      .join("\n");
+    message = `${ctx}\n\nUser: ${userText}`;
+  }
+  message = message.slice(0, 5000);
+
+  const tokens = Math.min(maxTokens, HF_SPACE_MAX_TOKENS);
+
+  let lastErr: Error = new Error("HF Space: no attempts made");
+
+  for (let attempt = 0; attempt < HF_SPACE_RETRIES; attempt++) {
+    if (signal.aborted) throw new Error("Aborted");
+
+    if (attempt > 0) {
+      // Space is waking up — wait before retrying
+      console.log(`[HF_SPACE] Cold-start retry ${attempt}/${HF_SPACE_RETRIES - 1}, waiting ${HF_SPACE_RETRY_DELAY_MS}ms...`);
+      await new Promise<void>(resolve => {
+        const t = setTimeout(resolve, HF_SPACE_RETRY_DELAY_MS);
+        signal.addEventListener("abort", () => { clearTimeout(t); resolve(); }, { once: true });
+      });
+      if (signal.aborted) throw new Error("Aborted");
+    }
+
+    try {
+      const result = await callHFSpaceOnce(message, systemMsg, tokens, temperature, signal);
+      if (attempt > 0) console.log(`[HF_SPACE] Succeeded on retry ${attempt}`);
+      return result;
+    } catch (err) {
+      lastErr = err as Error;
+      const isColdStart = (err as { hfColdStart?: boolean }).hfColdStart === true
+        || (lastErr.message ?? "").includes("error event");
+      if (!isColdStart) throw err; // non-retryable error
+      console.warn(`[HF_SPACE] Cold-start error on attempt ${attempt + 1}: ${lastErr.message.slice(0, 80)}`);
+    }
+  }
+
+  throw lastErr;
 }
 
 // ── OpenRouter streaming call ──────────────────────────────────────────────────
@@ -873,55 +922,14 @@ export async function runPlannerStream(
   onEvent({ type: "stage_start", stage: 2, name: "Classify Project" });
 
   if (intent === "AMBIGUOUS") {
-    if (completeFn || apiKey) {
-      try {
-        const classifyMessages = [
-          {
-            role: "system",
-            content: `Classify this user message as exactly one of: GREETING, CONVERSATION, or PROJECT.
-GREETING = hello/hi/greetings only.
-CONVERSATION = casual chat, questions about you, small talk.
-PROJECT = any request to build, create, or develop a software product.
-Reply with only the single word.`,
-          },
-          { role: "user", content: userMessage.slice(0, 500) },
-        ];
-
-        let response: string;
-        if (completeFn) {
-          const res = await completeFn(classifyMessages, { taskType: "general", maxTokens: 10, temperature: 0.1 });
-          response = res.content;
-        } else {
-          response = await callOpenRouterConversational(classifyMessages, apiKey!, signal);
-        }
-        const word = response.trim().toUpperCase();
-        if (word === "GREETING" || word === "CONVERSATION" || word === "PROJECT") {
-          intent = word as IntentType;
-        } else {
-          intent = "PROJECT";
-        }
-      } catch {
-        intent = "PROJECT";
-      }
-    } else {
-      intent = "PROJECT";
-    }
+    // Default to PROJECT — HF Space always available, no need to gate on apiKey
+    intent = "PROJECT";
   }
 
   onEvent({ type: "stage_complete", stage: 2 });
 
   // ── Non-project: conversational response ────────────────────────────────────
   if (intent === "GREETING" || intent === "CONVERSATION") {
-    if (!completeFn && !apiKey) {
-      onEvent({
-        type: "conversation",
-        content: intent === "GREETING"
-          ? "Hello! Add your OPENROUTER_API_KEY in Replit Secrets to enable AI responses."
-          : "To enable AI responses, add your OPENROUTER_API_KEY in Replit Secrets and restart the backend.",
-      });
-      return;
-    }
-
     const conversationalMessages = [
       { role: "system", content: CONVERSATION_SYSTEM_PROMPT },
       ...history.slice(-4).map((m) => ({ role: m.role, content: m.content })),
@@ -933,8 +941,11 @@ Reply with only the single word.`,
       if (completeFn) {
         const res = await completeFn(conversationalMessages, { taskType: "general", maxTokens: 400, temperature: 0.7 });
         content = res.content;
+      } else if (apiKey) {
+        content = await callOpenRouterConversational(conversationalMessages, apiKey, signal);
       } else {
-        content = await callOpenRouterConversational(conversationalMessages, apiKey!, signal);
+        // Try HF Space for conversational
+        content = await callHFSpace(conversationalMessages, 300, 0.7, signal);
       }
       onEvent({ type: "conversation", content });
     } catch {
@@ -944,16 +955,7 @@ Reply with only the single word.`,
   }
 
   // ── PROJECT intent: full 8-stage pipeline ───────────────────────────────────
-
-  if (!completeFn && !apiKey) {
-    onEvent({
-      type: "error",
-      message:
-        "The AI Planner requires an OPENROUTER_API_KEY in Replit Secrets. " +
-        "Add it and restart the backend to generate architecture blueprints.",
-    });
-    return;
-  }
+  // HF Space is always available — no gate needed.
 
   // ── Thinking phase: reason through the project before generating blueprint ───
   let thinkingContext = "";
