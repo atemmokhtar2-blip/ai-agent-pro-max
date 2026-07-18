@@ -1,13 +1,11 @@
 /**
- * PlannerWorkspace — Clean Chat Interface
+ * PlannerWorkspace — واجهة المحادثة الاحترافية
  *
- * Features:
- *  • Live streaming tokens with full Markdown rendering
- *  • Stop generation button
- *  • Edit previous prompt
- *  • Code blocks with syntax highlighting + copy
- *  • Auto-scroll with scroll-lock detection
- *  • Clean ChatGPT-style bubbles (user right / assistant left)
+ * • فقاعات بسيطة (مستخدم يمين / مساعد يسار)
+ * • Markdown كامل مع code blocks + copy
+ * • مؤشر typing ثلاثي النقاط أثناء المعالجة
+ * • لا يُعرض أي معلومات تقنية داخلية للمستخدم
+ * • جميع منطق الـ AI/API/Streaming محفوظ دون تغيير
  */
 
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
@@ -30,25 +28,17 @@ import { repositoriesApi } from "@/lib/repo-api";
 import { useTaskActions, useTaskStore, DEFAULT_EXEC_PHASES, DEFAULT_VERIFY_CHECKS } from "@/lib/task-store";
 import type { ExecutionTask, VerificationCheck, HealthReport, ProductionGate } from "@/lib/task-store";
 import type { StageState } from "./design-system/AgentTimeline";
-import { TaskDetailsDrawer } from "./execution/TaskDetailsDrawer";
-import type { TaskStatus } from "@/lib/task-store";
 import { MarkdownRenderer } from "./chat/MarkdownRenderer";
 import type { LogEntry } from "./chat/LiveLogPanel";
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 function autoTitle(content: string) {
-  return content.slice(0, 60).trim() || "New conversation";
+  return content.slice(0, 60).trim() || "محادثة جديدة";
 }
 
 function formatTime(iso: string) {
-  return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
-
-function formatElapsed(ms: number): string {
-  if (ms < 1000) return `${ms}ms`;
-  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
-  return `${Math.floor(ms / 60000)}m ${Math.round((ms % 60000) / 1000)}s`;
+  return new Date(iso).toLocaleTimeString("ar-SA", { hour: "2-digit", minute: "2-digit" });
 }
 
 function isBlueprint(content: string, module?: string): boolean {
@@ -73,8 +63,8 @@ function makeLog(level: LogEntry["level"], message: string): LogEntry {
 function StopIcon() {
   return (
     <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="2" y="2" width="9" height="9" rx="1" fill="currentColor" opacity="0.15" />
-      <rect x="2" y="2" width="9" height="9" rx="1" />
+      <rect x="2.5" y="2.5" width="8" height="8" rx="1.5" fill="currentColor" opacity="0.18" />
+      <rect x="2.5" y="2.5" width="8" height="8" rx="1.5" />
     </svg>
   );
 }
@@ -113,41 +103,12 @@ function RefreshIcon() {
   );
 }
 
-// ── Message footer (model · timing) ───────────────────────────────────────────
-
-function MessageFooter({
-  model,
-  elapsedMs,
-  timestamp,
-}: {
-  model?: string;
-  elapsedMs?: number;
-  timestamp?: string;
-}) {
-  const parts: React.ReactNode[] = [];
-
-  if (timestamp) parts.push(<span key="ts">{formatTime(timestamp)}</span>);
-  if (model) {
-    const shortModel = model.split("/").pop() ?? model;
-    parts.push(
-      <span key="model" className="flex items-center gap-1">
-        <span className="h-1.5 w-1.5 rounded-full bg-primary/40" />
-        {shortModel}
-      </span>
-    );
-  }
-  if (elapsedMs != null) parts.push(<span key="elapsed">{formatElapsed(elapsedMs)}</span>);
-
-  if (parts.length === 0) return null;
-
+function AssistantAvatar() {
   return (
-    <div className="mt-2 flex items-center gap-2 text-[10px] text-muted-foreground/35 flex-wrap">
-      {parts.map((p, i) => (
-        <React.Fragment key={i}>
-          {i > 0 && <span className="opacity-30">·</span>}
-          {p}
-        </React.Fragment>
-      ))}
+    <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-primary/12 border border-primary/20 mt-0.5">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className="text-primary">
+        <path d="M8 2L9.8 6.2L14 8L9.8 9.8L8 14L6.2 9.8L2 8L6.2 6.2L8 2Z" fill="currentColor" opacity="0.9" />
+      </svg>
     </div>
   );
 }
@@ -177,7 +138,7 @@ function UserBubble({
 
   return (
     <div className="flex justify-end group">
-      <div className="max-w-[80%] sm:max-w-[68%]">
+      <div className="max-w-[80%] sm:max-w-[70%]">
         {editing ? (
           <div className="flex flex-col gap-2">
             <textarea
@@ -190,6 +151,7 @@ function UserBubble({
               }}
               className="w-full resize-none rounded-2xl border border-border bg-muted/40 px-4 py-3 text-sm text-foreground leading-relaxed focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 min-h-[60px]"
               rows={3}
+              dir="auto"
             />
             <div className="flex gap-1.5 justify-end">
               <button
@@ -208,12 +170,12 @@ function UserBubble({
           </div>
         ) : (
           <>
-            <div className="relative rounded-2xl bg-zinc-800 border border-zinc-700/60 px-4 py-3 text-sm text-zinc-100 leading-relaxed shadow-sm">
-              <p className="whitespace-pre-wrap pr-5">{content}</p>
+            <div className="relative group/bubble rounded-[18px] rounded-tr-[6px] bg-zinc-800 border border-zinc-700/50 px-4 py-3 text-[0.875rem] text-zinc-100 leading-[1.75] shadow-sm">
+              <p className="whitespace-pre-wrap" dir="auto">{content}</p>
               {onEdit && (
                 <button
                   onClick={() => { setEditValue(content); setEditing(true); }}
-                  className="absolute right-2.5 top-2.5 rounded p-0.5 opacity-0 group-hover:opacity-50 hover:!opacity-100 transition-opacity text-zinc-400 hover:text-zinc-200"
+                  className="absolute -left-7 top-2 rounded p-1 opacity-0 group-hover/bubble:opacity-40 hover:!opacity-90 transition-opacity text-muted-foreground hover:text-foreground"
                   aria-label="تعديل الرسالة"
                 >
                   <EditIcon />
@@ -221,7 +183,9 @@ function UserBubble({
               )}
             </div>
             {timestamp && (
-              <p className="mt-1 text-right text-[10px] text-muted-foreground/30">{formatTime(timestamp)}</p>
+              <p className="mt-1.5 text-right text-[10px] text-muted-foreground/25 pr-1">
+                {formatTime(timestamp)}
+              </p>
             )}
           </>
         )}
@@ -235,90 +199,72 @@ function UserBubble({
 function AssistantBubble({
   children,
   timestamp,
-  model,
-  elapsedMs,
   onCopy,
 }: {
   children: React.ReactNode;
   timestamp?: string;
-  model?: string;
-  elapsedMs?: number;
   onCopy?: () => void;
 }) {
   return (
     <div className="flex gap-3 items-start group">
-      {/* Avatar dot */}
-      <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 border border-primary/20 mt-0.5 shrink-0">
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className="text-primary">
-          <path d="M8 2L9.8 6.2L14 8L9.8 9.8L8 14L6.2 9.8L2 8L6.2 6.2L8 2Z" fill="currentColor" opacity="0.9" />
-        </svg>
-      </div>
-
+      <AssistantAvatar />
       <div className="flex-1 min-w-0 relative pt-0.5">
+        {/* Copy whole message */}
         {onCopy && (
           <button
             onClick={onCopy}
-            className="absolute right-0 top-0 rounded p-1 opacity-0 group-hover:opacity-50 hover:!opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
-            aria-label="نسخ"
+            className="absolute -right-1 top-0 rounded p-1 opacity-0 group-hover:opacity-40 hover:!opacity-90 transition-opacity text-muted-foreground hover:text-foreground"
+            aria-label="نسخ الرسالة"
           >
             <CopyIconSm />
           </button>
         )}
-        <div className="text-sm text-foreground leading-relaxed pr-6">
+        <div className="text-[0.875rem] text-foreground leading-[1.75] pr-5">
           {children}
         </div>
-        <MessageFooter model={model} elapsedMs={elapsedMs} timestamp={timestamp} />
+        {timestamp && (
+          <p className="mt-1.5 text-[10px] text-muted-foreground/25">
+            {formatTime(timestamp)}
+          </p>
+        )}
       </div>
     </div>
   );
 }
 
-// ── Typing indicator ───────────────────────────────────────────────────────────
+// ── Typing indicator (3 dots) ──────────────────────────────────────────────────
 
 function TypingBubble() {
   return (
     <div className="flex gap-3 items-start">
-      <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 border border-primary/20 mt-0.5">
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className="text-primary">
-          <path d="M8 2L9.8 6.2L14 8L9.8 9.8L8 14L6.2 9.8L2 8L6.2 6.2L8 2Z" fill="currentColor" opacity="0.9" />
-        </svg>
-      </div>
-      <div className="flex items-center gap-1.5 pt-[9px]">
-        <span
-          className="h-2 w-2 rounded-full bg-foreground/25 animate-bounce"
-          style={{ animationDelay: "0ms", animationDuration: "1.2s" }}
-        />
-        <span
-          className="h-2 w-2 rounded-full bg-foreground/25 animate-bounce"
-          style={{ animationDelay: "200ms", animationDuration: "1.2s" }}
-        />
-        <span
-          className="h-2 w-2 rounded-full bg-foreground/25 animate-bounce"
-          style={{ animationDelay: "400ms", animationDuration: "1.2s" }}
-        />
+      <AssistantAvatar />
+      <div className="flex items-center gap-[5px] pt-[10px]">
+        {[0, 200, 400].map((delay) => (
+          <span
+            key={delay}
+            className="h-[7px] w-[7px] rounded-full bg-foreground/20 animate-bounce"
+            style={{ animationDelay: `${delay}ms`, animationDuration: "1.3s" }}
+          />
+        ))}
       </div>
     </div>
   );
 }
 
-// ── Conversation bubble (plain assistant reply) ────────────────────────────────
+// ── Conversation bubble (assistant reply with Markdown) ────────────────────────
 
 function ConversationBubble({
   content,
   timestamp,
-  model,
-  elapsedMs,
 }: {
   content: string;
   timestamp?: string;
-  model?: string;
-  elapsedMs?: number;
 }) {
   const handleCopy = () => {
     navigator.clipboard.writeText(content).then(() => toast.success("تم النسخ"));
   };
   return (
-    <AssistantBubble timestamp={timestamp} model={model} elapsedMs={elapsedMs} onCopy={handleCopy}>
+    <AssistantBubble timestamp={timestamp} onCopy={handleCopy}>
       <MarkdownRenderer content={content} />
     </AssistantBubble>
   );
@@ -340,21 +286,21 @@ function ErrorBubble({
   return (
     <AssistantBubble>
       <div className="flex flex-col gap-3">
-        <div className="flex items-start gap-2">
-          <div className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-red-500/15">
+        <div className="flex items-start gap-2.5">
+          <div className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-red-500/15 border border-red-500/20">
             <svg width="9" height="9" viewBox="0 0 9 9" fill="none" className="text-red-400">
               <line x1="4.5" y1="1" x2="4.5" y2="5.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-              <circle cx="4.5" cy="7.5" r="0.6" fill="currentColor" />
+              <circle cx="4.5" cy="7.5" r="0.7" fill="currentColor" />
             </svg>
           </div>
-          <p className="text-sm text-red-400 leading-relaxed">{message}</p>
+          <p className="text-[0.875rem] text-red-400/90 leading-relaxed">{message}</p>
         </div>
         {retryable && (onRetryBuild || onRetryVerification) && (
-          <div className="flex flex-wrap gap-2 pt-1 border-t border-border/30">
+          <div className="flex flex-wrap gap-2 pt-1 border-t border-border/20 mt-1">
             {onRetryBuild && (
               <button
                 onClick={onRetryBuild}
-                className="flex items-center gap-1.5 rounded-lg border border-border/60 px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground/70 hover:text-foreground hover:bg-muted/20 transition-colors"
+                className="flex items-center gap-1.5 rounded-lg border border-border/50 px-3 py-1.5 text-[11px] font-medium text-muted-foreground/70 hover:text-foreground hover:bg-muted/20 transition-colors"
               >
                 <RefreshIcon />
                 إعادة المحاولة
@@ -363,7 +309,7 @@ function ErrorBubble({
             {onRetryVerification && !onRetryBuild && (
               <button
                 onClick={onRetryVerification}
-                className="flex items-center gap-1.5 rounded-lg border border-border/60 px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground/70 hover:text-foreground hover:bg-muted/20 transition-colors"
+                className="flex items-center gap-1.5 rounded-lg border border-border/50 px-3 py-1.5 text-[11px] font-medium text-muted-foreground/70 hover:text-foreground hover:bg-muted/20 transition-colors"
               >
                 <RefreshIcon />
                 إعادة التحقق
@@ -387,24 +333,25 @@ const EXAMPLE_PROMPTS = [
 
 function EmptyState({ onPrompt }: { onPrompt: (p: string) => void }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-6 py-16 px-4 text-center">
-      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 border border-primary/20">
-        <svg width="22" height="22" viewBox="0 0 16 16" fill="none" className="text-primary">
+    <div className="flex flex-col items-center justify-center gap-7 py-16 px-4 text-center">
+      <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 border border-primary/20">
+        <svg width="24" height="24" viewBox="0 0 16 16" fill="none" className="text-primary">
           <path d="M8 1.5L10 6L14.5 8L10 10L8 14.5L6 10L1.5 8L6 6L8 1.5Z" fill="currentColor" opacity="0.85" />
         </svg>
       </div>
-      <div className="max-w-sm">
-        <h2 className="text-base font-semibold text-foreground mb-1.5">ماذا تريد أن تبني؟</h2>
-        <p className="text-sm text-muted-foreground/70 leading-relaxed">
-          صف فكرتك البرمجية وسيقوم المساعد بتوليد خطة معمارية شاملة لمشروعك.
+      <div className="max-w-xs">
+        <h2 className="text-base font-semibold text-foreground mb-2">ماذا تريد أن تبني؟</h2>
+        <p className="text-[0.8rem] text-muted-foreground/60 leading-relaxed">
+          صف فكرتك البرمجية وسيقوم المساعد بتحليلها وبناء خطة معمارية شاملة.
         </p>
       </div>
-      <div className="grid grid-cols-1 gap-1.5 w-full max-w-sm">
+      <div className="grid grid-cols-1 gap-2 w-full max-w-sm">
         {EXAMPLE_PROMPTS.map((p) => (
           <button
             key={p}
             onClick={() => onPrompt(p)}
-            className="rounded-xl border border-border/60 bg-muted/20 px-4 py-2.5 text-xs text-right text-muted-foreground hover:text-foreground hover:border-primary/30 hover:bg-muted/40 transition-all leading-relaxed"
+            className="rounded-xl border border-border/50 bg-muted/15 px-4 py-2.5 text-[0.8rem] text-right text-muted-foreground/70 hover:text-foreground hover:border-primary/30 hover:bg-muted/30 transition-all leading-relaxed"
+            dir="rtl"
           >
             {p}
           </button>
@@ -554,7 +501,7 @@ export function PlannerWorkspace({
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+    el.style.height = `${Math.min(el.scrollHeight, 180)}px`;
   }, [input]);
 
   // ── Log helper (internal) ────────────────────────────────────────────────────
@@ -665,7 +612,13 @@ export function PlannerWorkspace({
           const previewUrl = event.previewUrl;
           const productionGate = event.productionGate;
 
-          setVerified(taskId, { phases: DEFAULT_EXEC_PHASES.map((p) => ({ ...p, status: "complete" })), checks, healthReport, allPassed: event.allPassed ?? false, completedAt: new Date().toISOString() }, previewUrl, productionGate);
+          setVerified(taskId, {
+            phases: DEFAULT_EXEC_PHASES.map((p) => ({ ...p, status: "complete" })),
+            checks,
+            healthReport,
+            allPassed: event.allPassed ?? false,
+            completedAt: new Date().toISOString(),
+          }, previewUrl, productionGate);
           setExecActive(false);
           setExecCurrentStage(undefined);
           addLog("success", event.allPassed ? "All checks passed!" : `Done with ${checks.filter((c) => c.status === "fail").length} issue(s)`);
@@ -846,10 +799,9 @@ export function PlannerWorkspace({
         }
 
         case "conversation": {
-          const elapsedMs = Date.now() - plannerStartRef.current;
           setStreamingContent("");
           setStreamingStage(null);
-          setPhase({ kind: "done_conversation", content: event.content, userMessage: content, elapsedMs });
+          setPhase({ kind: "done_conversation", content: event.content, userMessage: content });
           setIsStreaming(false);
           queryClient.invalidateQueries({ queryKey: getGetConversationQueryKey(conversationId) });
           queryClient.invalidateQueries({ queryKey: getListConversationsQueryKey() });
@@ -893,7 +845,7 @@ export function PlannerWorkspace({
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void handleSend(); }
   };
 
-  // ── Auto-start after repo import ──────────────────────────────────────────────
+  // ── Auto-start after repo import ─────────────────────────────────────────────
   const handleSendRef = useRef(handleSend);
   useEffect(() => { handleSendRef.current = handleSend; }, [handleSend]);
 
@@ -910,7 +862,7 @@ export function PlannerWorkspace({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoStartMessage]);
 
-  // ── Render history messages ──────────────────────────────────────────────────
+  // ── Render history messages ───────────────────────────────────────────────────
 
   const renderHistory = () => {
     const limit = phase.kind === "idle" ? messages.length : priorMessageCountRef.current;
@@ -930,15 +882,11 @@ export function PlannerWorkspace({
         );
       }
       if (msg.role === "assistant") {
-        const metadata = msg.metadata as { module?: string; model?: string } | null;
-        const model = metadata?.model;
-        // Blueprint or conversation — both rendered as clean markdown
         return (
           <ConversationBubble
             key={msg.id}
             content={msg.content}
             timestamp={msg.created_at}
-            model={model}
           />
         );
       }
@@ -946,7 +894,7 @@ export function PlannerWorkspace({
     });
   };
 
-  // ── Render current phase ─────────────────────────────────────────────────────
+  // ── Render current phase ──────────────────────────────────────────────────────
 
   const renderPhase = () => {
     switch (phase.kind) {
@@ -957,8 +905,8 @@ export function PlannerWorkspace({
             {streamingContent ? (
               <AssistantBubble>
                 <MarkdownRenderer content={streamingContent} />
-                {/* Cursor blink */}
-                <span className="inline-block w-0.5 h-4 bg-foreground/40 ml-0.5 animate-pulse align-text-bottom" />
+                {/* Blinking cursor */}
+                <span className="inline-block w-[2px] h-[1em] bg-foreground/35 ml-0.5 animate-pulse align-text-bottom rounded-sm" />
               </AssistantBubble>
             ) : (
               <TypingBubble />
@@ -968,18 +916,13 @@ export function PlannerWorkspace({
       }
 
       case "done_blueprint": {
-        // Blueprint is done; execution pipeline is launching
         const task = tasks.find((t) => t.id === phase.taskId);
         return (
           <>
             <UserBubble content={phase.userMessage} />
             {task?.result ? (
               <>
-                <ConversationBubble
-                  content={task.result.content}
-                  model={task.result.model}
-                  elapsedMs={phase.elapsedMs}
-                />
+                <ConversationBubble content={task.result.content} />
                 <TypingBubble />
               </>
             ) : (
@@ -996,10 +939,7 @@ export function PlannerWorkspace({
           <>
             <UserBubble content={phase.userMessage} />
             {task?.result && (
-              <ConversationBubble
-                content={task.result.content}
-                model={task.result.model}
-              />
+              <ConversationBubble content={task.result.content} />
             )}
             <TypingBubble />
           </>
@@ -1013,28 +953,25 @@ export function PlannerWorkspace({
           <>
             <UserBubble content={phase.userMessage} />
             {task?.result && (
-              <ConversationBubble
-                content={task.result.content}
-                model={task.result.model}
-              />
+              <ConversationBubble content={task.result.content} />
             )}
-            {/* Show preview link if available */}
+            {/* Preview link — shown only when available */}
             {phase.previewUrl && (
               <AssistantBubble>
-                <p className="text-sm text-muted-foreground/80 leading-relaxed">
+                <p className="text-[0.875rem] text-muted-foreground/80 leading-relaxed">
                   المشروع جاهز.{" "}
                   <a
                     href={phase.previewUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-primary hover:text-primary/80 underline underline-offset-2 transition-colors"
+                    className="text-primary hover:text-primary/75 underline underline-offset-[3px] transition-colors"
                   >
                     افتح المعاينة ↗
                   </a>
                 </p>
               </AssistantBubble>
             )}
-            {/* Retry on failure */}
+            {/* Error on partial failure */}
             {!phase.allPassed && (
               <ErrorBubble
                 message="اكتملت العملية مع بعض التنبيهات."
@@ -1051,11 +988,7 @@ export function PlannerWorkspace({
         return (
           <>
             <UserBubble content={phase.userMessage} />
-            <ConversationBubble
-              content={phase.content}
-              model={phase.model}
-              elapsedMs={phase.elapsedMs}
-            />
+            <ConversationBubble content={phase.content} />
           </>
         );
 
@@ -1078,18 +1011,18 @@ export function PlannerWorkspace({
     }
   };
 
-  // ── Regenerate button (idle + has history) ───────────────────────────────────
+  // ── Regenerate button (idle + has history) ────────────────────────────────────
 
   const regenerateButton = useMemo(() => {
     if (phase.kind !== "idle") return null;
     const lastUser = [...messages].reverse().find((m) => m.role === "user");
     if (!lastUser) return null;
     return (
-      <div className="flex justify-center pt-1">
+      <div className="flex justify-center pt-2">
         <button
           onClick={() => void handleSend(lastUser.content)}
           disabled={isStreaming}
-          className="flex items-center gap-1.5 rounded-full border border-border bg-card/60 px-3 py-1.5 text-[11px] text-muted-foreground hover:text-foreground hover:border-primary/30 hover:bg-muted transition-all disabled:opacity-40"
+          className="flex items-center gap-1.5 rounded-full border border-border/50 bg-card/60 px-3.5 py-1.5 text-[11px] text-muted-foreground hover:text-foreground hover:border-primary/30 hover:bg-muted/20 transition-all disabled:opacity-40"
         >
           <RefreshIcon />
           إعادة التوليد
@@ -1100,7 +1033,7 @@ export function PlannerWorkspace({
 
   const isBusy = isStreaming || phase.kind === "executing" || phase.kind === "verifying" || phase.kind === "done_blueprint";
 
-  // ── Render ───────────────────────────────────────────────────────────────────
+  // ── Render ────────────────────────────────────────────────────────────────────
 
   return (
     <div className="flex h-full min-w-0 overflow-hidden">
@@ -1108,27 +1041,29 @@ export function PlannerWorkspace({
       {/* ── Chat column ──────────────────────────────────────────────────────── */}
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
 
-        {/* ── Messages ──────────────────────────────────────────────────────── */}
+        {/* ── Messages area ────────────────────────────────────────────────── */}
         <div
           ref={scrollContainerRef}
           onScroll={handleScroll}
-          className="flex-1 overflow-y-auto"
+          className="flex-1 overflow-y-auto scroll-smooth"
         >
-          <div className="mx-auto max-w-2xl px-4 py-8 flex flex-col gap-6">
+          <div className="mx-auto max-w-2xl px-4 py-8 flex flex-col gap-7">
             {renderHistory()}
             {renderPhase()}
             {regenerateButton}
+
+            {/* Empty state / waiting for repo */}
             {messages.length === 0 && phase.kind === "idle" && (
               isWaitingForRepo ? (
-                <div className="flex flex-col items-center justify-center gap-4 py-16 px-4 text-center">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 border border-primary/20">
+                <div className="flex flex-col items-center justify-center gap-5 py-16 px-4 text-center">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 border border-primary/20">
                     <svg className="text-primary animate-spin" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                       <path d="M21 12a9 9 0 1 1-6.219-8.56" />
                     </svg>
                   </div>
-                  <div className="max-w-sm">
-                    <h2 className="text-base font-semibold text-foreground mb-1.5">جاري تحليل المستودع…</h2>
-                    <p className="text-sm text-muted-foreground/70 leading-relaxed">
+                  <div className="max-w-xs">
+                    <h2 className="text-base font-semibold text-foreground mb-2">جاري تحليل المستودع…</h2>
+                    <p className="text-[0.8rem] text-muted-foreground/60 leading-relaxed">
                       يتم استنساخ المشروع وفهم بنيته. قد يستغرق ذلك 30–60 ثانية.
                     </p>
                   </div>
@@ -1137,20 +1072,22 @@ export function PlannerWorkspace({
                 <EmptyState onPrompt={(p) => { setInput(p); textareaRef.current?.focus(); }} />
               )
             )}
+
             <div ref={messagesEndRef} />
           </div>
         </div>
 
-        {/* ── Input area ──────────────────────────────────────────────────────── */}
+        {/* ── Input area ───────────────────────────────────────────────────── */}
         <div
-          className="flex-shrink-0 px-4 pt-3 pb-4 border-t border-border/30 bg-background/50 backdrop-blur-sm"
+          className="flex-shrink-0 px-4 pt-3 pb-4 border-t border-border/25 bg-background/60 backdrop-blur-sm"
           style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom, 1rem))" }}
         >
           <div className="mx-auto max-w-2xl">
+
             {/* Repository selector */}
             {repositories.length > 0 && (
-              <div className="mb-2 flex items-center gap-2">
-                <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.4" className="text-muted-foreground flex-shrink-0">
+              <div className="mb-2.5 flex items-center gap-2">
+                <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.4" className="text-muted-foreground/50 flex-shrink-0">
                   <rect x="1" y="1" width="9" height="9" rx="1" />
                   <path d="M3.5 1v9M7.5 1v9M1 4h9M1 7.5h9" />
                 </svg>
@@ -1158,7 +1095,7 @@ export function PlannerWorkspace({
                   value={selectedRepoId}
                   onChange={(e) => setSelectedRepoId(e.target.value)}
                   disabled={isBusy}
-                  className="flex-1 rounded-lg border border-border bg-muted/30 px-2 py-1 text-[11px] text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/30 disabled:opacity-50"
+                  className="flex-1 rounded-lg border border-border/50 bg-muted/20 px-2.5 py-1 text-[11px] text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/30 disabled:opacity-50 transition-colors"
                 >
                   <option value="">بدون سياق مستودع</option>
                   {repositories.map((r) => (
@@ -1169,14 +1106,14 @@ export function PlannerWorkspace({
             )}
 
             {/* Input box */}
-            <div className="relative flex items-end gap-2 rounded-2xl border border-border bg-card/80 shadow-sm focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/10 transition-all duration-150">
+            <div className="relative flex items-end gap-2 rounded-2xl border border-border/60 bg-card/80 shadow-sm focus-within:border-primary/40 focus-within:ring-2 focus-within:ring-primary/10 transition-all duration-150">
               <Textarea
                 ref={textareaRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder={isBusy ? "يعمل المساعد…" : "اكتب رسالتك…"}
-                className="min-h-[48px] max-h-[180px] flex-1 resize-none border-0 bg-transparent px-4 py-3.5 pr-2 text-sm shadow-none focus-visible:ring-0 placeholder:text-muted-foreground/40 leading-relaxed"
+                className="min-h-[50px] max-h-[200px] flex-1 resize-none border-0 bg-transparent px-4 py-3.5 text-[0.875rem] shadow-none focus-visible:ring-0 placeholder:text-muted-foreground/35 leading-relaxed"
                 rows={1}
                 disabled={isBusy}
                 dir="auto"
@@ -1186,7 +1123,7 @@ export function PlannerWorkspace({
                 {isBusy && (
                   <button
                     onClick={handleStop}
-                    className="flex h-8 w-8 items-center justify-center rounded-xl border border-border bg-muted/60 text-muted-foreground hover:text-foreground hover:border-destructive/40 hover:bg-destructive/10 transition-colors"
+                    className="flex h-8 w-8 items-center justify-center rounded-xl border border-border/60 bg-muted/50 text-muted-foreground hover:text-foreground hover:border-destructive/40 hover:bg-destructive/10 transition-colors"
                     aria-label="إيقاف التوليد"
                     title="إيقاف"
                   >
@@ -1209,15 +1146,19 @@ export function PlannerWorkspace({
               </div>
             </div>
 
-            {/* Hint line */}
+            {/* Bottom hint + preview toggle */}
             <div className="mt-1.5 flex items-center justify-between px-0.5">
-              <p className="text-[10px] text-muted-foreground/25 hidden sm:block">
+              <p className="text-[10px] text-muted-foreground/20 hidden sm:block select-none">
                 Enter للإرسال · Shift+Enter لسطر جديد
               </p>
               {activePreviewUrl && (
                 <button
                   onClick={() => setShowPreview((p) => !p)}
-                  className={`flex items-center gap-1 rounded-lg px-2.5 py-1 text-[10px] transition-colors ml-auto ${showPreview ? "text-primary bg-primary/10" : "text-muted-foreground/50 hover:text-foreground hover:bg-muted/40"}`}
+                  className={`flex items-center gap-1 rounded-lg px-2.5 py-1 text-[10px] transition-colors ml-auto ${
+                    showPreview
+                      ? "text-primary bg-primary/10 border border-primary/20"
+                      : "text-muted-foreground/40 hover:text-foreground hover:bg-muted/30"
+                  }`}
                 >
                   <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.3">
                     <rect x="1" y="1.5" width="8" height="7" rx="1" />
@@ -1227,32 +1168,34 @@ export function PlannerWorkspace({
                 </button>
               )}
             </div>
+
           </div>
         </div>
 
       </div>{/* end chat column */}
 
-      {/* ── Right: Inline preview panel ───────────────────────────────────────── */}
+      {/* ── Preview panel (right side) ────────────────────────────────────────── */}
       {showPreview && activePreviewUrl && (
-        <div className="flex-shrink-0 w-[420px] border-l border-border/50 bg-card/20 flex flex-col overflow-hidden">
-          <div className="flex-shrink-0 border-b border-border/40 px-3 py-2.5 flex items-center gap-2">
+        <div className="flex-shrink-0 w-[420px] border-l border-border/40 bg-card/20 flex flex-col overflow-hidden">
+          <div className="flex-shrink-0 border-b border-border/30 px-3.5 py-2.5 flex items-center gap-2.5">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50">معاينة</span>
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/40">معاينة</span>
             <a
               href={activePreviewUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="ml-auto text-[10px] text-primary/60 hover:text-primary transition-colors"
+              className="ml-auto text-[10px] text-primary/50 hover:text-primary transition-colors"
             >
               فتح ↗
             </a>
             <button
               onClick={() => setShowPreview(false)}
-              className="text-muted-foreground/40 hover:text-foreground transition-colors"
+              className="text-muted-foreground/30 hover:text-foreground transition-colors"
               aria-label="إغلاق المعاينة"
             >
               <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                <line x1="1" y1="1" x2="9" y2="9" /><line x1="9" y1="1" x2="1" y2="9" />
+                <line x1="1" y1="1" x2="9" y2="9" />
+                <line x1="9" y1="1" x2="1" y2="9" />
               </svg>
             </button>
           </div>
@@ -1267,6 +1210,7 @@ export function PlannerWorkspace({
           </div>
         </div>
       )}
+
     </div>
   );
 }
