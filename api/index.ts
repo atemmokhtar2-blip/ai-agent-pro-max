@@ -8,7 +8,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     // The build:vercel script bundles the Express app into app.cjs
     // We import it here to handle the request.
-    const { default: app } = await import('../artifacts/api-server/dist/vercel/app.cjs');
+    const { default: app } = await import('./dist/app.cjs');
     
     // Express app is exported, we call it with req and res
     return app(req, res);

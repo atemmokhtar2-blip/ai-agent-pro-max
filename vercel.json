@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "buildCommand": "pnpm --filter @workspace/api-server run build:vercel && pnpm --filter @workspace/ai-agent run build",
+  "buildCommand": "pnpm --filter @workspace/api-server run build:vercel && mkdir -p api/dist && cp artifacts/api-server/dist/vercel/*.cjs api/dist/ && pnpm --filter @workspace/ai-agent run build",
   "outputDirectory": "artifacts/ai-agent/dist/public",
   "installCommand": "pnpm install --frozen-lockfile",
   "framework": null,
