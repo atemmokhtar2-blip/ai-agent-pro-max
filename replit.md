@@ -57,13 +57,23 @@ A professional AI-powered development platform where users describe software the
 - `PROVIDER_ENCRYPTION_KEY` — 32-byte hex, for AI provider key encryption
 - Run `pnpm --filter @workspace/db run push` after fresh setup or schema changes
 
+## Live Execution Engine (Phase 1)
+
+The AI chat workspace now shows a professional live execution view during the 17-stage build pipeline:
+
+- `artifacts/ai-agent/src/components/workspace/LiveExecutionView.tsx` — replaces `TypingBubble` during `executing`/`verifying` phases. Shows: overall progress bar, 17 stages grouped into Planning/Build/Verification sections, live terminal output per stage (from `exec_stage_start.detail` SSE field), real-time verification checklist, health report card.
+- `artifacts/ai-agent/src/lib/execution-stream.ts` — `exec_stage_start` event now includes optional `detail?: string` (terminal line from backend)
+- `LiveWorkspace.tsx` tracks `execStageLogs: Map<number, string[]>` and `activeStageId: number | null`; resets on stop/new message
+
+Stage groups: Planning (1-2), Build (3-9), Verification (10-17). Terminal shown for shell stages (3,4,5,6,7,8,9,15,16). Milestone toast notifications fire at stages 2,3,4,7,9 and key verify checks.
+
 ## Gotchas
 
 - HTTP headers must be ASCII-only — em dashes crash OpenRouter requests with a ByteString error
 - `AbortSignal.timeout()` properly aborts hanging fetches; `Promise.race` + `setTimeout` does NOT
 - Generated API hooks: `getListConversationsQueryKey()` takes optional params — pass none for the base key
 - `AIConversationList` returns `{ items, total, page, per_page }` (not just an array)
-- Vite config must guard `process.env.PORT` / `BASE_PATH` with an `isBuild` flag to avoid CI build failures
+- Vite config hardcodes port 5000 — do NOT read `process.env.PORT`; Replit injects a dynamic port that conflicts with the `localPort=5000 → externalPort=80` mapping
 - `Start Backend` workflow must NOT use `waitForPort = 8080` — platform port detection for this port is unreliable; always set `PORT=8080` explicitly in the workflow args
 
 ## Admin

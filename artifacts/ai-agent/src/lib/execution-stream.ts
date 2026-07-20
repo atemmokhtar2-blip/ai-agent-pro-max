@@ -66,7 +66,7 @@ export interface ProductionGate {
 }
 
 export type ExecutionStreamEvent =
-  | { type: "exec_stage_start";    stage: number; stageName: string; stageLabel: string }
+  | { type: "exec_stage_start";    stage: number; stageName: string; stageLabel: string; detail?: string }
   | { type: "exec_stage_complete"; stage: number; duration: number }
   | { type: "exec_stage_fail";     stage: number; error: string; duration?: number }
   | { type: "verify_check";        check: string; checkName: string; checkDomain?: string; status: ExecVerifyStatus; detail?: string }

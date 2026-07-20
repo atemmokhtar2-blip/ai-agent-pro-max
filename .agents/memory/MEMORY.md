@@ -31,3 +31,4 @@
 - [AuthProvider aggressive redirect](authprovider-redirect.md) — AuthProvider checks token validity on mount (getAccessToken()), invalidates TanStack Query cache on logout/auth failure; uses refreshingRef to prevent concurrent refresh loops; calls queryClient.clear() on full logout.
 - [AI Providers Phase 2](phase2-ai-providers.md) — new DB cols (maxOutputTokens/supportsFunctionCalling/supportsThinking), new pages (AIUsageDashboard/AIRouterPage), encrypted backup (AES-256-GCM), enhanced import parser, active health retest.
 - [Streaming engine V2](streaming-engine-v2.md) — rAF token batching + FrozenSegment memoization + healCodeFences + stage-aware TypingBubble + scroll button.
+- [Live execution view architecture](live-execution-view.md) — LiveExecutionView replaces TypingBubble during execution; execStageLogs Map + activeStageId tracked in LiveWorkspace; vite must hardcode port 5000.

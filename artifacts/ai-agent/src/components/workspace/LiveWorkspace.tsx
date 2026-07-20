@@ -29,6 +29,7 @@ import {
 } from "@/lib/task-store";
 import type { VerificationCheck, HealthReport, ProductionGate } from "@/lib/task-store";
 import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer";
+import { LiveExecutionView } from "@/components/workspace/LiveExecutionView";
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -367,6 +368,10 @@ export function LiveWorkspace({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(false);
 
+  // ── Execution live state (terminal logs + active stage) ───────────────────────
+  const [execStageLogs, setExecStageLogs] = useState<Map<number, string[]>>(new Map());
+  const [activeStageId, setActiveStageId] = useState<number | null>(null);
+
   // ── Refs ──────────────────────────────────────────────────────────────────────
   const abortRef = useRef<AbortController | null>(null);
   const execAbortRef = useRef<AbortController | null>(null);
@@ -416,6 +421,8 @@ export function LiveWorkspace({
 
   const runExecution = useCallback(async (taskId: string, blueprint: string, convId: string) => {
     setExecActive(true);
+    setExecStageLogs(new Map());
+    setActiveStageId(null);
     const controller = new AbortController();
     execAbortRef.current = controller;
     startExecution(taskId, DEFAULT_EXEC_PHASES.map((p) => ({ ...p })));
@@ -424,6 +431,18 @@ export function LiveWorkspace({
       switch (event.type) {
         case "exec_stage_start":
           execPhaseStart(taskId, event.stage);
+          setActiveStageId(event.stage);
+          // Capture terminal output (detail field from shell stages)
+          if (event.detail) {
+            setExecStageLogs(prev => {
+              const next = new Map(prev);
+              const current = next.get(event.stage) ?? [];
+              // Avoid excessive log entries — keep last 200 lines
+              const trimmed = current.length >= 200 ? current.slice(-199) : current;
+              next.set(event.stage, [...trimmed, event.detail!.trim()]);
+              return next;
+            });
+          }
           setPhase((prev) => {
             if (prev.kind === "executing" || prev.kind === "verifying") {
               return { ...prev, kind: event.stage >= 10 ? "verifying" : "executing" };
@@ -438,6 +457,15 @@ export function LiveWorkspace({
 
         case "exec_stage_fail":
           execPhaseFail(taskId, event.stage, event.error ?? "Stage failed");
+          // Log failure reason in terminal
+          if (event.error) {
+            setExecStageLogs(prev => {
+              const next = new Map(prev);
+              const current = next.get(event.stage) ?? [];
+              next.set(event.stage, [...current, `ERROR: ${event.error}`]);
+              return next;
+            });
+          }
           break;
 
         case "verify_check":
@@ -552,6 +580,8 @@ export function LiveWorkspace({
     setIsStreaming(false);
     setExecActive(false);
     setStreamingContent("");
+    setExecStageLogs(new Map());
+    setActiveStageId(null);
     setPhase({ kind: "idle" });
     toast.info("توقف التوليد");
   }, []);
@@ -753,11 +783,21 @@ export function LiveWorkspace({
       case "executing":
       case "verifying": {
         const task = tasks.find((t) => t.id === phase.taskId);
+        const execPhases = task?.execPhases ?? DEFAULT_EXEC_PHASES.map(p => ({ ...p }));
+        const verifyChecks = task?.verificationChecks ?? [];
         return (
           <>
             <UserBubble content={phase.userMessage} />
             {task?.result && <ConversationBubble content={task.result.content} />}
-            <TypingBubble />
+            <LiveExecutionView
+              phases={execPhases}
+              checks={verifyChecks}
+              stageLogs={execStageLogs}
+              activeStageId={activeStageId}
+              healthReport={task?.healthReport}
+              isVerifying={phase.kind === "verifying"}
+              userMessage={phase.userMessage}
+            />
           </>
         );
       }

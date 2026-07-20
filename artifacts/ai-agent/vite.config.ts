@@ -6,12 +6,9 @@ import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 
 const isBuild = process.argv.includes("build");
 
-// Read PORT from env (artifact.toml injects PORT=5000); fall back to 5000 for local dev.
-const port = Number(process.env.PORT || "5000");
-
-if (!isBuild && (Number.isNaN(port) || port <= 0)) {
-  throw new Error(`Invalid PORT value: "${process.env.PORT}"`);
-}
+// Hardcode 5000 — Replit injects a dynamic PORT env that conflicts with the
+// localPort=5000 → externalPort=80 mapping in .replit. Always use 5000.
+const port = 5000;
 
 const basePath = process.env.BASE_PATH ?? "/";
 
