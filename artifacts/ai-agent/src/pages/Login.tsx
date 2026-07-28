@@ -907,7 +907,10 @@ export default function Login() {
           token_type:    res.token_type,
         });
         toast.success("مرحباً بعودتك!");
-        setLocation("/dashboard");
+        // Navigation is handled by the useEffect above that watches isAuthenticated.
+        // Calling setLocation here immediately after authenticate() can cause a race
+        // where ProtectedRoute renders before AuthProvider's state update propagates,
+        // sees isAuthenticated=false, and redirects back to /login.
       },
       onError: (err) => {
         const message =
