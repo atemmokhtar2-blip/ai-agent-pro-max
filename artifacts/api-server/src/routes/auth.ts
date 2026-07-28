@@ -8,7 +8,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { db, usersTable, refreshTokensTable, passwordResetTokensTable } from "@workspace/db";
-import { eq, and, lt } from "drizzle-orm";
+import { eq, and, lt, or } from "drizzle-orm";
 import {
   generateId,
   hashPassword,
@@ -41,8 +41,8 @@ const registerSchema = z.object({
 });
 
 const loginSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(1),
+  email: z.string().min(1, "البريد الإلكتروني أو اسم المستخدم مطلوب"),
+  password: z.string().min(1, "كلمة المرور مطلوبة"),
 });
 
 const refreshSchema = z.object({
@@ -180,14 +180,20 @@ router.post("/register", authLimiter, validateBody(registerSchema), async (req, 
 router.post("/login", authLimiter, validateBody(loginSchema), async (req, res) => {
   const { email, password } = req.body as z.infer<typeof loginSchema>;
 
+  // البحث عن المستخدم باستخدام البريد الإلكتروني أو اسم المستخدم
   const [user] = await db
     .select()
     .from(usersTable)
-    .where(eq(usersTable.email, email.toLowerCase()))
+    .where(
+      or(
+        eq(usersTable.email, email.toLowerCase()),
+        eq(usersTable.username, email)
+      )
+    )
     .limit(1);
 
   if (!user || !user.isActive) {
-    res.status(401).json({ error: "Invalid email or password" });
+    res.status(401).json({ error: "البريد الإلكتروني أو اسم المستخدم أو كلمة المرور غير صحيحة" });
     return;
   }
 
