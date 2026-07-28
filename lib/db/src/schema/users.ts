@@ -21,7 +21,7 @@ export const usersTable = pgTable("users", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
 
-export const insertUserSchema = createInsertSchema(usersTable).omit({
+export const insertUserSchema = (createInsertSchema(usersTable) as any).omit({
   createdAt: true,
   updatedAt: true,
   lastLogin: true,

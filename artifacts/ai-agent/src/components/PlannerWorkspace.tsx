@@ -473,6 +473,46 @@ export function PlannerWorkspace({
   });
   const repositories = reposData?.items ?? [];
 
+  // ── Reset phase when switching conversations ─────────────────────────────
+  // CRITICAL FIX: When the user switches to a different conversation, the
+  // phase state (e.g. done_conversation, done_blueprint, executing) and
+  // priorMessageCountRef from the PREVIOUS conversation persist.  This causes
+  // renderHistory() to slice messages using a stale limit, making the chat
+  // appear empty or partially hidden ("chat disappearance" bug).
+  // We reset everything to a clean idle state whenever conversationId changes.
+
+  useEffect(() => {
+    // Abort any in-flight streams from the previous conversation
+    abortRef.current?.abort();
+    execAbortRef.current?.abort();
+    if (flushRafRef.current !== null) {
+      cancelAnimationFrame(flushRafRef.current);
+      flushRafRef.current = null;
+    }
+    pendingTokensRef.current = "";
+
+    // Reset all phase-related state to a clean idle state
+    setPhase({ kind: "idle" });
+    setIsStreaming(false);
+    setStreamingContent("");
+    setStreamingStage(null);
+    setThinkingText("");
+    setThinkingModel("");
+    setThinkingStreaming(false);
+    setActiveModelSwitch(null);
+    setShowScrollBtn(false);
+    setExecActive(false);
+    setExecCurrentStage(undefined);
+    setExecLogs([]);
+
+    // Sync priorMessageCountRef to the new conversation's message count so
+    // renderHistory() shows the full history immediately.
+    priorMessageCountRef.current = messages.length;
+    blueprintRef.current = "";
+    userScrolledRef.current = false;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversationId]);
+
   // ── Document title ───────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -913,8 +953,20 @@ export function PlannerWorkspace({
   // ── Render history messages ───────────────────────────────────────────────────
 
   const renderHistory = () => {
-    const limit = phase.kind === "idle" ? messages.length : priorMessageCountRef.current;
-    const visible = messages.slice(0, limit);
+    // When idle, show the full message history from the DB.
+    // During active streaming / executing, only show history up to the count
+    // captured before the current request started (priorMessageCountRef) — the
+    // new user message + assistant reply are rendered by renderPhase() instead.
+    // BUT once a "done" or "error" phase is reached, the DB has been refreshed
+    // (queryClient.invalidateQueries) so messages already contains the new
+    // exchange.  In that case show the full history to avoid the reply
+    // disappearing after the SSE stream closes.
+    const isLivePhase =
+      phase.kind === "streaming" ||
+      phase.kind === "executing" ||
+      phase.kind === "verifying";
+    const limit = isLivePhase ? priorMessageCountRef.current : messages.length;
+    const visible = messages.slice(0, Math.max(0, limit));
     if (visible.length === 0) return null;
 
     return visible.map((msg, idx) => {

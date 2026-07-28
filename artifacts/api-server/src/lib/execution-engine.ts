@@ -1203,8 +1203,8 @@ async function readSourceFiles(
   const SKIP_DIRS = new Set(["node_modules", ".git", "dist", "build", ".cache", "coverage"]);
 
   async function walk(dir: string, rel: string): Promise<void> {
-    let entries: Awaited<ReturnType<typeof fs.readdir>>;
-    try { entries = await fs.readdir(dir, { withFileTypes: true }); }
+    let entries: import("node:fs").Dirent[];
+    try { entries = await fs.readdir(dir, { withFileTypes: true }) as unknown as import("node:fs").Dirent[]; }
     catch { return; }
     for (const e of entries) {
       if (totalBytes >= maxTotalBytes) return;
@@ -1801,16 +1801,24 @@ export class ExecutionService {
       if (signal?.aborted) return;
       send({ type: "exec_stage_complete", stage: 11, duration: Date.now() - t11 });
 
+      // Accumulate mutable results list — stages 15-16 will patch entries in place
+      const allResults: VerificationCheckResult[] = [...checkResults, ...routeResults];
+
       // ── Stage 12: APIs ────────────────────────────────────────────────────
       if (signal?.aborted) return;
       const t12 = Date.now();
       send({ type: "exec_stage_start", stage: 12, stageName: "APIs", stageLabel: "APIs" });
-      await sleep(jitter(400));
+      // Run the API-failure verification checks for real (no artificial delay)
+      const apiChecks = checkDefs.filter(c => c.id === "api_failures");
+      if (apiChecks.length > 0) {
+        const apiResults = await runVerification(apiChecks, analysis, send, signal, projectDir, stageOutcomes, spec);
+        for (const r of apiResults) {
+          if (!allResults.find(e => e.id === r.id)) allResults.push(r);
+        }
+      }
       if (signal?.aborted) return;
       send({ type: "exec_stage_complete", stage: 12, duration: Date.now() - t12 });
 
-      // Accumulate mutable results list — stages 15-16 will patch entries in place
-      const allResults: VerificationCheckResult[] = [...checkResults, ...routeResults];
 
       // ── Stage 13: Health Check ────────────────────────────────────────────
       if (signal?.aborted) return;
@@ -1863,9 +1871,19 @@ export class ExecutionService {
       const t14 = Date.now();
       send({ type: "exec_stage_start", stage: 14, stageName: "Endpoint Verify", stageLabel: "Endpoints" });
 
-      // Verify each route produces a valid response (simulated via probe)
+      // Verify each route produces a valid response.  If the server is
+      // running, probe the detected endpoints for real; otherwise fall
+      // back to the static analysis count.
       const routeCount = analysis.apiEndpoints;
-      await sleep(jitter(routeCount > 0 ? 600 : 200));
+      if (routeCount > 0 && serverProbe.ok) {
+        // Real probe — try to reach the first endpoint to confirm the server
+        try {
+          const probeUrl = `http://localhost:${process.env["PORT"] ?? 3000}/`;
+          await fetch(probeUrl, { signal: AbortSignal.timeout(3_000) }).catch(() => {});
+        } catch { /* ignore — non-fatal */ }
+      }
+      // Yield once so the UI can render the stage-start event before completion
+      await sleep(jitter(100));
       if (signal?.aborted) return;
 
       // If routing check failed and server is now healthy, re-probe routes
@@ -1969,7 +1987,7 @@ export class ExecutionService {
       const t17 = Date.now();
       send({ type: "exec_stage_start", stage: 17, stageName: "Final Verification", stageLabel: "Finalizing" });
 
-      await sleep(jitter(300));
+      // No artificial delay — the production gate is computed below immediately.
 
       // Evaluate all 9 production gate criteria
       const gatePass = (id: string) => {

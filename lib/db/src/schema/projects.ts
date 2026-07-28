@@ -44,7 +44,7 @@ export const projectMembersRelations = relations(projectMembersTable, ({ one }) 
   inviter: one(usersTable, { fields: [projectMembersTable.invitedBy], references: [usersTable.id] }),
 }));
 
-export const insertProjectSchema = createInsertSchema(projectsTable).omit({
+export const insertProjectSchema = (createInsertSchema(projectsTable) as any).omit({
   createdAt: true,
   updatedAt: true,
 });

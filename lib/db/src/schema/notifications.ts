@@ -12,7 +12,7 @@ export const notificationsTable = pgTable("notifications", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-export const insertNotificationSchema = createInsertSchema(notificationsTable).omit({
+export const insertNotificationSchema = (createInsertSchema(notificationsTable) as any).omit({
   createdAt: true,
 });
 

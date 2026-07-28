@@ -11,7 +11,7 @@ export const auditLogsTable = pgTable("audit_logs", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-export const insertAuditLogSchema = createInsertSchema(auditLogsTable).omit({
+export const insertAuditLogSchema = (createInsertSchema(auditLogsTable) as any).omit({
   createdAt: true,
 });
 
