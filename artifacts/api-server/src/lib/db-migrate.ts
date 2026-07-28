@@ -164,7 +164,6 @@ export async function ensureAdminUser(): Promise<void> {
         email: PERMANENT_ADMIN_EMAIL,
         passwordHash: null,
         role: "super_admin",
-        emailVerified: true,
         isActive: true,
         createdAt: new Date(),
         updatedAt: new Date(),
