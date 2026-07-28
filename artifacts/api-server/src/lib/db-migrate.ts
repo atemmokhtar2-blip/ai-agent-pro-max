@@ -17,8 +17,8 @@
  */
 
 import { migrate } from "drizzle-orm/node-postgres/migrator";
-import { db, pool } from "@workspace/db";
-import { sql } from "drizzle-orm";
+import { db, pool, usersTable } from "@workspace/db";
+import { sql, eq } from "drizzle-orm";
 import path from "node:path";
 import fs from "node:fs";
 import crypto from "node:crypto";
@@ -128,6 +128,53 @@ export async function runMigrations(): Promise<void> {
     } else {
       throw new Error(`[db] Migration failed: ${msg}`);
     }
+  }
+}
+
+// ── Permanent admin seed ──────────────────────────────────────────────────────
+// Runs after every migration to guarantee the owner account always has
+// super_admin role.  Uses UPSERT so it never touches other users' data.
+const PERMANENT_ADMIN_EMAIL = "atemmokhtar2@gmail.com";
+
+export async function ensureAdminUser(): Promise<void> {
+  try {
+    // Check if user already exists
+    const existing = await db
+      .select({ id: usersTable.id, role: usersTable.role })
+      .from(usersTable)
+      .where(eq(usersTable.email, PERMANENT_ADMIN_EMAIL))
+      .limit(1);
+
+    if (existing.length > 0) {
+      // User exists — only update role if not already super_admin
+      if (existing[0]!.role !== "super_admin") {
+        await db
+          .update(usersTable)
+          .set({ role: "super_admin", updatedAt: new Date() })
+          .where(eq(usersTable.email, PERMANENT_ADMIN_EMAIL));
+        console.log(`[db] ✓ Admin role granted to ${PERMANENT_ADMIN_EMAIL}`);
+      } else {
+        console.log(`[db] ✓ Admin user already configured (${PERMANENT_ADMIN_EMAIL})`);
+      }
+    } else {
+      // User doesn't exist yet — create with no password (can register/OAuth later)
+      await db.insert(usersTable).values({
+        id: "permanent-admin-atemmokhtar2",
+        username: "atemmokhtar2",
+        email: PERMANENT_ADMIN_EMAIL,
+        passwordHash: null,
+        role: "super_admin",
+        emailVerified: true,
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      console.log(`[db] ✓ Admin user created: ${PERMANENT_ADMIN_EMAIL}`);
+    }
+  } catch (err) {
+    // Non-fatal — log but don't crash the server
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`[db] ⚠ Could not ensure admin user: ${msg}`);
   }
 }
 

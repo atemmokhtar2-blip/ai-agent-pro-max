@@ -1,7 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { validateEnv } from "./lib/env-config";
-import { runMigrations, closeDb } from "./lib/db-migrate";
+import { runMigrations, ensureAdminUser, closeDb } from "./lib/db-migrate";
 
 const rawPort = process.env["PORT"];
 const port = Number(rawPort ?? "8080");
@@ -87,6 +87,9 @@ async function startServer(): Promise<void> {
 
   // 2. Run database migrations — creates tables, applies schema changes, zero data loss
   await runMigrations();
+
+  // 2b. Ensure permanent admin account exists (idempotent — never touches other users)
+  await ensureAdminUser();
 
   // 3. Start HTTP server
   await new Promise<void>((resolve, reject) => {
