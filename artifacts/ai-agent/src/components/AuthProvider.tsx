@@ -53,7 +53,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []); // Run once on mount
 
   // ── /api/v1/users/me — the authoritative user check ─────────────────────
-  const { data: user, isLoading, error } = useGetMe({
+  const { data: user, isLoading, isPending, error } = useGetMe({
     query: {
       enabled: !!tokens?.access_token,
       queryKey: getGetMeQueryKey(),
@@ -97,6 +97,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = (newTokens: TokenPair) => {
     storeTokens(newTokens.access_token, newTokens.refresh_token);
     setTokens({ access_token: newTokens.access_token, refresh_token: newTokens.refresh_token });
+    // Immediately trigger the /me fetch so ProtectedRoute never sees
+    // isLoading=false + isAuthenticated=false at the same time.
+    void queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
   };
 
   const logout = () => {
@@ -108,7 +111,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const value: AuthContextType = {
     user: user ?? null,
     isAuthenticated: !!user,
-    isLoading: isLoading && !!tokens?.access_token,
+    // Use `isPending` (not `isLoading`) so the loading state holds for the
+    // entire window between "tokens stored" and "user data received".
+    // TanStack Query v5: isLoading = isPending && isFetching, which is false
+    // for one render after `enabled` flips true (fetch not yet started).
+    // isPending = true whenever there is no cached data, which is exactly
+    // what we need to prevent ProtectedRoute from firing a /login redirect.
+    isLoading: isPending && !!tokens?.access_token,
     login,
     logout,
   };
