@@ -1,9 +1,8 @@
 /**
- * Login — Spider AI Platform
+ * Login — كودك (Kodak) Platform
  *
- * Cinematic splash → premium glass login card.
- * Animation: CSS transforms + opacity only — GPU-accelerated, 60 FPS.
- * No canvas · No particles · No WebGL · No Lottie · SVG-only.
+ * Cyberpunk neon login page with purple/blue glow, code background,
+ * and the "كودك" branding. Full-screen immersive design.
  */
 
 import { useForm } from "react-hook-form";
@@ -17,89 +16,77 @@ import {
   useState,
   useEffect,
   useCallback,
-  useId,
   useRef,
 } from "react";
-import {
-  motion,
-  AnimatePresence,
-  useAnimation,
-  useReducedMotion,
-} from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 
 // ── Zod schema ─────────────────────────────────────────────────────────────────
 
 const loginSchema = z.object({
-  email:    z.string().min(1, "Email is required").email("Enter a valid email"),
-  password: z.string().min(1, "Password is required").min(8, "At least 8 characters"),
+  email:    z.string().min(1, "البريد الإلكتروني أو اسم المستخدم مطلوب"),
+  password: z.string().min(1, "كلمة المرور مطلوبة").min(8, "8 أحرف على الأقل"),
 });
 type LoginFormValues = z.infer<typeof loginSchema>;
 
 // ── Color tokens ───────────────────────────────────────────────────────────────
 
-const RED       = "#FF1A1A";
-const RED_HOVER = "#FF3333";
-const RED_DIM   = "#CC1111";
+const PURPLE      = "#9B5CFF";
+const PURPLE_BRIGHT = "#B07CFF";
+const PURPLE_DIM  = "#6B3FCF";
+const BLUE_GLOW   = "#4FC3F7";
+const NEON_PINK   = "#E040FB";
 
-// ── Global CSS keyframes (injected once, GPU-accelerated) ──────────────────────
+// ── Global CSS keyframes ───────────────────────────────────────────────────────
 
 const KEYFRAMES = `
-  /* Spider outer float — slow, 2 px up/down with a tiny sway */
-  @keyframes spiderFloat {
-    0%,100% { transform: translateY(0px) rotate(0deg); }
-    20%     { transform: translateY(-1px) rotate(0.4deg); }
-    40%     { transform: translateY(-2px) rotate(0.6deg); }
-    60%     { transform: translateY(-1px) rotate(0deg); }
-    70%     { transform: translateY(0px)  rotate(0deg); }
-    85%     { transform: translateY(1.5px) rotate(-0.4deg); }
+  @keyframes logoFloat {
+    0%,100% { transform: translateY(0px); }
+    50%     { transform: translateY(-8px); }
   }
-  /* Full body breathe — very subtle scale */
-  @keyframes spiderBreathe {
-    0%,100% { transform: scale(1); }
-    50%     { transform: scale(1.018); }
-  }
-  /* Red glow pulse — low opacity, slow */
-  @keyframes spiderGlow {
+  @keyframes logoGlow {
     0%,100% {
       filter:
-        drop-shadow(0 3px 10px rgba(255,26,26,0.10))
-        drop-shadow(0 0  5px rgba(255,26,26,0.06));
+        drop-shadow(0 0 20px rgba(155,92,255,0.4))
+        drop-shadow(0 0 40px rgba(79,195,247,0.2));
     }
     50% {
       filter:
-        drop-shadow(0 3px 18px rgba(255,26,26,0.30))
-        drop-shadow(0 0  10px rgba(255,26,26,0.16));
+        drop-shadow(0 0 30px rgba(155,92,255,0.7))
+        drop-shadow(0 0 60px rgba(79,195,247,0.35));
     }
   }
-  /* Glow during auth loading — stronger pulse */
-  @keyframes spiderGlowAuth {
-    0%,100% { filter: drop-shadow(0 0 6px rgba(255,26,26,0.18)); }
-    50%     { filter: drop-shadow(0 0 28px rgba(255,26,26,0.60)); }
+  @keyframes ringRotate {
+    0%   { transform: translate(-50%, -50%) rotate(0deg); }
+    100% { transform: translate(-50%, -50%) rotate(360deg); }
   }
-  /* Front leg pair — tiny forward/back lean */
-  @keyframes legsF {
-    0%,100% { transform: rotate(0deg); }
-    50%     { transform: rotate(0.8deg); }
+  @keyframes ringRotateReverse {
+    0%   { transform: translate(-50%, -50%) rotate(0deg); }
+    100% { transform: translate(-50%, -50%) rotate(-360deg); }
   }
-  /* Back leg pair — opposite phase */
-  @keyframes legsB {
-    0%,100% { transform: rotate(0deg); }
-    50%     { transform: rotate(-0.6deg); }
+  @keyframes scanline {
+    0%   { transform: translateY(-100%); }
+    100% { transform: translateY(100vh); }
   }
-  /* Shadow cast below spider — mirrors float */
-  @keyframes spiderShadow {
-    0%,100% { opacity: 0.22; transform: translateX(-50%) scaleX(1); }
-    40%     { opacity: 0.30; transform: translateX(-50%) scaleX(1.2); }
-    70%     { opacity: 0.16; transform: translateX(-50%) scaleX(0.9); }
+  @keyframes codeFlicker {
+    0%, 100% { opacity: 0.12; }
+    50%      { opacity: 0.18; }
   }
-  /* Splash fade-in from black */
-  @keyframes splashFadeIn {
-    from { opacity: 0; transform: scale(0.88); }
-    to   { opacity: 1; transform: scale(1); }
+  @keyframes inputGlow {
+    0%,100% { box-shadow: 0 0 5px rgba(155,92,255,0.2), inset 0 0 5px rgba(155,92,255,0.05); }
+    50%     { box-shadow: 0 0 15px rgba(155,92,255,0.4), inset 0 0 10px rgba(155,92,255,0.1); }
+  }
+  @keyframes buttonPulse {
+    0%,100% { box-shadow: 0 0 15px rgba(155,92,255,0.3), 0 0 30px rgba(79,195,247,0.15); }
+    50%     { box-shadow: 0 0 25px rgba(155,92,255,0.5), 0 0 50px rgba(79,195,247,0.25); }
+  }
+  @keyframes particleFloat {
+    0%   { transform: translateY(0) translateX(0); opacity: 0; }
+    10%  { opacity: 1; }
+    90%  { opacity: 1; }
+    100% { transform: translateY(-200px) translateX(30px); opacity: 0; }
   }
 `;
 
-// Inject keyframes once into the document head
 let keyframesInjected = false;
 function ensureKeyframes() {
   if (keyframesInjected || typeof document === "undefined") return;
@@ -109,422 +96,359 @@ function ensureKeyframes() {
   keyframesInjected = true;
 }
 
-// ── Spider SVG — pure CSS animated ────────────────────────────────────────────
+// ── Code Background ────────────────────────────────────────────────────────────
 
-interface SpiderProps {
-  size: number;
-  id: string;
-  /** True while the login mutation is in-flight */
-  authenticating?: boolean;
-  /** Override float animation (for splash phases) */
-  noFloat?: boolean;
-  /** Show body only (no legs) */
-  bodyOnly?: boolean;
-  /** Front legs only */
-  frontLegsOnly?: boolean;
-  /** Fixed glow filter override */
-  glowStyle?: string;
-}
-
-function SpiderSVG({
-  size,
-  id,
-  authenticating = false,
-  noFloat = false,
-  bodyOnly = false,
-  frontLegsOnly = false,
-  glowStyle,
-}: SpiderProps) {
-  ensureKeyframes();
-
-  const floatAnim = noFloat
-    ? "none"
-    : "spiderFloat 10s ease-in-out infinite, spiderFloat 10s ease-in-out infinite";
-
-  const glowAnim = glowStyle
-    ? undefined
-    : authenticating
-    ? "spiderGlowAuth 1.4s ease-in-out infinite"
-    : "spiderGlow 7s ease-in-out 1s infinite";
+function CodeBackground() {
+  const codeLines = [
+    "const agent = new Agent();",
+    "function deploy() {",
+    "  return new Promise((r) =>",
+    "    setTimeout(r, 2000)",
+    "  );",
+    "}",
+    "import { AI } from '@core';",
+    "const model = AI.load('gpt');",
+    "async function run() {",
+    "  const res = await model.query();",
+    "  console.log(res.data);",
+    "}",
+    "class Workflow {",
+    "  constructor(steps) {",
+    "    this.steps = steps;",
+    "  }",
+    "  async execute() {",
+    "    for (const s of this.steps)",
+    "      await s.run();",
+    "  }",
+    "}",
+    "export default {",
+    "  name: 'ai-agent',",
+    "  version: '2.0.0',",
+    "};",
+    "const config = {",
+    "  maxTokens: 4096,",
+    "  temperature: 0.7,",
+    "};",
+    "await db.connect();",
+    "const users = await User.findAll();",
+  ];
 
   return (
-    <div style={{ position: "relative", display: "inline-block" }}>
-      {/* Ground shadow */}
-      {!noFloat && (
+    <div style={{
+      position: "fixed",
+      inset: 0,
+      overflow: "hidden",
+      zIndex: 0,
+      pointerEvents: "none",
+    }}>
+      {/* Base gradient */}
+      <div style={{
+        position: "absolute",
+        inset: 0,
+        background: `
+          radial-gradient(ellipse 80% 60% at 30% 20%, rgba(155,92,255,0.08) 0%, transparent 60%),
+          radial-gradient(ellipse 60% 50% at 70% 80%, rgba(79,195,247,0.06) 0%, transparent 50%),
+          radial-gradient(ellipse 40% 40% at 50% 50%, rgba(224,64,251,0.04) 0%, transparent 50%),
+          #050508
+        `,
+      }} />
+
+      {/* Code columns */}
+      <div style={{ position: "absolute", inset: 0, display: "flex", gap: 40, padding: "20px 0", animation: "codeFlicker 4s ease-in-out infinite" }}>
+        {codeLines.map((line, i) => {
+          const col = i % 3;
+          const offset = (i * 7) % 100;
+          return (
+            <div
+              key={i}
+              style={{
+                position: "absolute",
+                left: col === 0 ? "2%" : col === 1 ? "33%" : "64%",
+                top: `${offset}%`,
+                fontFamily: "'Fira Code', 'Cascadia Code', 'JetBrains Mono', monospace",
+                fontSize: 11,
+                color: `rgba(${col === 0 ? '155,92,255' : col === 1 ? '79,195,247' : '224,64,251'},0.18)`,
+                whiteSpace: "nowrap",
+                lineHeight: 2,
+                userSelect: "none",
+              }}
+            >
+              {line}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Scanline effect */}
+      <div style={{
+        position: "absolute",
+        left: 0,
+        right: 0,
+        height: "2px",
+        background: "linear-gradient(to right, transparent, rgba(155,92,255,0.15), transparent)",
+        animation: "scanline 8s linear infinite",
+      }} />
+
+      {/* Grid overlay */}
+      <div style={{
+        position: "absolute",
+        inset: 0,
+        backgroundImage: `
+          linear-gradient(rgba(155,92,255,0.03) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(155,92,255,0.03) 1px, transparent 1px)
+        `,
+        backgroundSize: "40px 40px",
+      }} />
+
+      {/* Floating particles */}
+      {Array.from({ length: 15 }).map((_, i) => (
         <div
-          aria-hidden="true"
+          key={`p-${i}`}
           style={{
             position: "absolute",
-            bottom: -10,
-            left: "50%",
-            width: "50%",
-            height: 5,
+            left: `${10 + (i * 7) % 80}%`,
+            bottom: "-10px",
+            width: 2,
+            height: 2,
             borderRadius: "50%",
-            background: "rgba(255,26,26,0.22)",
-            filter: "blur(6px)",
-            animation: "spiderShadow 10s ease-in-out infinite",
-            willChange: "opacity, transform",
+            background: i % 3 === 0 ? PURPLE : i % 3 === 1 ? BLUE_GLOW : NEON_PINK,
+            animation: `particleFloat ${5 + (i % 4)}s ease-in-out ${i * 0.7}s infinite`,
+            opacity: 0,
           }}
         />
-      )}
+      ))}
+    </div>
+  );
+}
 
-      {/* Float + sway wrapper */}
-      <div
-        style={{
-          animation: noFloat ? "none" : "spiderFloat 10s ease-in-out infinite",
-          willChange: "transform",
-        }}
-      >
-        {/* Breathe + glow wrapper */}
-        <div
-          style={{
-            animation: [
-              !noFloat && "spiderBreathe 8s ease-in-out infinite",
-              glowStyle ? "" : glowAnim,
-            ].filter(Boolean).join(", ") || undefined,
-            willChange: "transform, filter",
-            filter: glowStyle,
-          }}
-        >
-          <svg
-            width={size}
-            height={size}
-            viewBox="0 0 120 120"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-            aria-label="Spider — Official brand mark"
-          >
-            <defs>
-              <radialGradient id={`${id}-ab`} cx="48%" cy="34%" r="62%">
-                <stop offset="0%"   stopColor="#FF4444" />
-                <stop offset="50%"  stopColor={RED} />
-                <stop offset="100%" stopColor="#7A0D0D" />
-              </radialGradient>
-              <radialGradient id={`${id}-th`} cx="50%" cy="28%" r="60%">
-                <stop offset="0%"   stopColor="#FF3A3A" />
-                <stop offset="100%" stopColor="#9A1010" />
-              </radialGradient>
-            </defs>
+// ── Kodak Logo with rotating rings ─────────────────────────────────────────────
 
-            {/* ── Legs ── */}
-            {!bodyOnly && (
-              <>
-                {/* Front legs — tiny forward lean animation */}
-                <g
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  style={{
-                    transformBox: "fill-box",
-                    transformOrigin: "center",
-                    animation: frontLegsOnly || !frontLegsOnly
-                      ? "legsF 4s ease-in-out infinite"
-                      : undefined,
-                    willChange: "transform",
-                  }}
-                >
-                  <path d="M 46,46 L 30,31 L 11,19"  stroke={RED}    strokeWidth="3.2" />
-                  <path d="M 74,46 L 90,31 L 109,19"  stroke={RED}    strokeWidth="3.2" />
-                  <path d="M 46,54 L 26,46 L  6,42"  stroke={RED_DIM} strokeWidth="2.9" />
-                  <path d="M 74,54 L 94,46 L 114,42"  stroke={RED_DIM} strokeWidth="2.9" />
-                </g>
+function KodakLogo({ authenticating }: { authenticating: boolean }) {
+  return (
+    <div style={{
+      position: "relative",
+      width: 200,
+      height: 200,
+      margin: "0 auto 20px",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+    }}>
+      {/* Outer rotating ring */}
+      <div style={{
+        position: "absolute",
+        width: 190,
+        height: 190,
+        borderRadius: "50%",
+        border: "1px solid rgba(155,92,255,0.3)",
+        top: "50%",
+        left: "50%",
+        animation: "ringRotate 20s linear infinite",
+      }} />
 
-                {/* Back legs — opposite phase, only when all legs visible */}
-                {!frontLegsOnly && (
-                  <g
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    style={{
-                      transformBox: "fill-box",
-                      transformOrigin: "center",
-                      animation: "legsB 5.5s 1.5s ease-in-out infinite",
-                      willChange: "transform",
-                    }}
-                  >
-                    <path d="M 46,63 L 25,68 L  6,73"  stroke={RED_DIM} strokeWidth="2.9" />
-                    <path d="M 74,63 L 95,68 L 114,73"  stroke={RED_DIM} strokeWidth="2.9" />
-                    <path d="M 46,71 L 29,86 L 13,100" stroke={RED}    strokeWidth="3.0" />
-                    <path d="M 74,71 L 91,86 L 107,100" stroke={RED}    strokeWidth="3.0" />
-                  </g>
-                )}
-              </>
-            )}
+      {/* Outer ring with dashes */}
+      <div style={{
+        position: "absolute",
+        width: 190,
+        height: 190,
+        borderRadius: "50%",
+        border: "2px solid transparent",
+        borderTopColor: "rgba(79,195,247,0.5)",
+        borderRightColor: "rgba(155,92,255,0.3)",
+        top: "50%",
+        left: "50%",
+        animation: "ringRotateReverse 15s linear infinite",
+      }} />
 
-            {/* ── Body (abdomen + thorax + head) ── */}
-            {/* Abdomen */}
-            <ellipse cx="60" cy="77" rx="21" ry="25" fill={`url(#${id}-ab)`} />
-            <ellipse cx="60" cy="71" rx="9"  ry="6"   fill="rgba(0,0,0,0.20)" />
-            <ellipse cx="60" cy="81" rx="7"  ry="5"   fill="rgba(0,0,0,0.15)" />
-            <ellipse cx="60" cy="90" rx="5"  ry="3.5" fill="rgba(0,0,0,0.12)" />
-            <ellipse cx="54" cy="65" rx="4"  ry="3"   fill="rgba(255,80,80,0.12)" />
-            {/* Thorax */}
-            <ellipse cx="60" cy="51" rx="13" ry="12" fill={`url(#${id}-th)`} />
-            {/* Head */}
-            <circle  cx="60" cy="36" r="9"           fill={`url(#${id}-th)`} />
-            {/* Eyes */}
-            <circle  cx="55.5" cy="34"   r="2.3"     fill="rgba(0,0,0,0.78)" />
-            <circle  cx="64.5" cy="34"   r="2.3"     fill="rgba(0,0,0,0.78)" />
-            <circle  cx="56.2" cy="33.1" r="0.7"     fill="rgba(255,255,255,0.60)" />
-            <circle  cx="65.2" cy="33.1" r="0.7"     fill="rgba(255,255,255,0.60)" />
-            {/* Pedipalps */}
-            <path d="M 53,29 Q 47,22 43,17" stroke={RED} strokeWidth="2.0" strokeLinecap="round" />
-            <path d="M 67,29 Q 73,22 77,17" stroke={RED} strokeWidth="2.0" strokeLinecap="round" />
-          </svg>
+      {/* Inner rotating ring */}
+      <div style={{
+        position: "absolute",
+        width: 150,
+        height: 150,
+        borderRadius: "50%",
+        border: "1px solid rgba(224,64,251,0.2)",
+        borderBottomColor: "rgba(79,195,247,0.4)",
+        top: "50%",
+        left: "50%",
+        animation: "ringRotate 12s linear infinite",
+      }} />
+
+      {/* Inner glow circle */}
+      <div style={{
+        position: "absolute",
+        width: 120,
+        height: 120,
+        borderRadius: "50%",
+        background: "radial-gradient(circle, rgba(155,92,255,0.15) 0%, transparent 70%)",
+        top: "50%",
+        left: "50%",
+        animation: authenticating ? "logoGlow 1s ease-in-out infinite" : "logoGlow 4s ease-in-out infinite",
+      }} />
+
+      {/* Center content */}
+      <div style={{
+        position: "relative",
+        zIndex: 2,
+        textAlign: "center",
+        animation: "logoFloat 6s ease-in-out infinite",
+      }}>
+        {/* </> icon */}
+        <div style={{
+          fontSize: 42,
+          fontWeight: 900,
+          color: PURPLE_BRIGHT,
+          textShadow: "0 0 20px rgba(155,92,255,0.6), 0 0 40px rgba(79,195,247,0.3)",
+          lineHeight: 1,
+          marginBottom: 2,
+        }}>
+          {"</>"}
+        </div>
+        {/* Arabic brand name */}
+        <div style={{
+          fontSize: 32,
+          fontWeight: 900,
+          color: "#FFFFFF",
+          textShadow: "0 0 15px rgba(155,92,255,0.5)",
+          direction: "rtl",
+          lineHeight: 1.2,
+        }}>
+          كودك
         </div>
       </div>
     </div>
   );
 }
 
-// ── Splash screen ──────────────────────────────────────────────────────────────
+// ── Tagline ────────────────────────────────────────────────────────────────────
 
-type SplashPhase = "hidden" | "body" | "legs-front" | "legs-all" | "breathing" | "exit";
-
-interface SplashProps { onComplete: () => void }
-
-function SplashScreen({ onComplete }: SplashProps) {
-  const reduced = useReducedMotion();
-  const id      = useId().replace(/:/g, "sp");
-  const [phase, setPhase] = useState<SplashPhase>("hidden");
-  const [exiting, setExiting] = useState(false);
-
-  useEffect(() => {
-    if (reduced) { onComplete(); return; }
-
-    const t: ReturnType<typeof setTimeout>[] = [];
-    const at = (ms: number, fn: () => void) => t.push(setTimeout(fn, ms));
-
-    at(300,  () => setPhase("body"));
-    at(800,  () => setPhase("legs-front"));
-    at(1300, () => setPhase("legs-all"));
-    at(2000, () => setPhase("breathing"));
-    at(3000, () => setExiting(true));
-    at(3700, () => onComplete());
-
-    return () => t.forEach(clearTimeout);
-  }, [reduced, onComplete]);
-
-  if (reduced) return null;
-
-  const bodyVisible  = phase !== "hidden";
-  const frontLegs    = phase !== "hidden" && phase !== "body";
-  const allLegs      = !["hidden", "body", "legs-front"].includes(phase);
-  const breathing    = phase === "breathing";
-  const glowIntensity = breathing ? 0.7 : allLegs ? 0.3 : 0;
-
-  const glowFilter = glowIntensity > 0
-    ? `drop-shadow(0 0 ${Math.round(glowIntensity * 28)}px rgba(255,26,26,${(glowIntensity * 0.55).toFixed(2)}))`
-    : undefined;
-
+function Tagline() {
   return (
-    <motion.div
-      className="fixed inset-0 flex items-center justify-center"
-      style={{
-        background: "radial-gradient(ellipse 60% 50% at 50% 45%, rgba(80,0,0,0.18) 0%, #000 70%)",
-        zIndex: 100,
-      }}
-      animate={exiting ? { opacity: 0, scale: 1.04 } : { opacity: 1, scale: 1 }}
-      transition={exiting ? { duration: 0.65, ease: "easeInOut" } : { duration: 0 }}
-    >
-      <motion.div
-        initial={{ opacity: 0, scale: 0.82 }}
-        animate={bodyVisible ? { opacity: 1, scale: 1 } : { opacity: 0, scale: 0.82 }}
-        transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-      >
-        <SpiderSVG
-          size={120}
-          id={id}
-          noFloat={!breathing}
-          bodyOnly={!frontLegs}
-          frontLegsOnly={frontLegs && !allLegs}
-          glowStyle={glowFilter}
-        />
-      </motion.div>
-    </motion.div>
-  );
-}
-
-// ── Google & GitHub icons ──────────────────────────────────────────────────────
-
-function GoogleIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true" style={{ flexShrink: 0 }}>
-      <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
-      <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
-      <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
-      <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
-    </svg>
-  );
-}
-
-function GitHubIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true" fill="currentColor" style={{ flexShrink: 0 }}>
-      <path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0 1 12 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z" />
-    </svg>
-  );
-}
-
-// ── OAuth button ───────────────────────────────────────────────────────────────
-
-type OAuthProvider = "google" | "github";
-
-function OAuthButton({
-  provider, disabled, loading, onClick,
-}: { provider: OAuthProvider; disabled: boolean; loading: boolean; onClick: () => void }) {
-  const [hovered, setHovered] = useState(false);
-  const [pressed, setPressed] = useState(false);
-
-  const cfg = {
-    google: { label: "Continue with Google", icon: <GoogleIcon /> },
-    github: { label: "Continue with GitHub",  icon: <GitHubIcon /> },
-  }[provider];
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => { setHovered(false); setPressed(false); }}
-      onMouseDown={() => setPressed(true)}
-      onMouseUp={() => setPressed(false)}
-      style={{
-        width: "100%",
-        height: 52,
-        borderRadius: 14,
-        background: hovered ? "#141414" : "#0C0C0C",
-        border: `1px solid ${hovered ? "rgba(255,26,26,0.40)" : "rgba(255,255,255,0.07)"}`,
-        boxShadow: hovered ? "0 0 12px rgba(255,26,26,0.10)" : "none",
-        color: "#E8E8E8",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 10,
+    <div style={{
+      textAlign: "center",
+      marginBottom: 32,
+      direction: "rtl",
+    }}>
+      <p style={{
         fontSize: 14,
-        fontWeight: 500,
-        letterSpacing: "0.01em",
-        cursor: disabled ? "not-allowed" : "pointer",
-        opacity: disabled ? 0.50 : 1,
-        transform: pressed && !disabled ? "scale(0.985)" : "scale(1)",
-        transition: "background 0.2s, border-color 0.2s, box-shadow 0.2s, transform 0.12s",
-        fontFamily: "inherit",
-        outline: "none",
-      }}
-      aria-label={cfg.label}
-    >
-      {cfg.icon}
-      <span>{loading ? "Redirecting…" : cfg.label}</span>
-    </button>
-  );
-}
-
-// ── Divider ────────────────────────────────────────────────────────────────────
-
-function Divider() {
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-      <div style={{ flex: 1, height: 1, background: "linear-gradient(to right, transparent, rgba(255,255,255,0.07))" }} />
-      <span style={{ color: "#444", fontSize: 11, letterSpacing: "0.10em", whiteSpace: "nowrap", userSelect: "none" }}>
-        OR SIGN IN WITH EMAIL
-      </span>
-      <div style={{ flex: 1, height: 1, background: "linear-gradient(to left, transparent, rgba(255,255,255,0.07))" }} />
+        color: "rgba(176,124,255,0.8)",
+        margin: 0,
+        letterSpacing: "0.02em",
+        fontFamily: "'Cairo', 'Tajawal', sans-serif",
+      }}>
+        {"_> طوّر فكرتك بكود"}
+      </p>
     </div>
   );
 }
 
-// ── Input field ────────────────────────────────────────────────────────────────
+// ── Cyber Input Field ──────────────────────────────────────────────────────────
 
-interface InputFieldProps {
+interface CyberInputProps {
   id: string;
-  label: string;
+  placeholder: string;
   type: string;
-  placeholder?: string;
   autoComplete?: string;
+  icon: React.ReactNode;
+  suffix?: React.ReactNode;
   error?: string;
   hasError?: boolean;
-  suffix?: React.ReactNode;
   registration: React.InputHTMLAttributes<HTMLInputElement>;
 }
 
-function InputField({ id, label, type, placeholder, autoComplete, error, hasError, suffix, registration }: InputFieldProps) {
+function CyberInput({ id, placeholder, type, autoComplete, icon, suffix, error, hasError, registration }: CyberInputProps) {
   const [focused, setFocused] = useState(false);
-  const shakeAnim = useAnimation();
-
-  useEffect(() => {
-    if (hasError) {
-      shakeAnim.start({
-        x: [0, -7, 7, -5, 5, -2, 2, 0],
-        transition: { duration: 0.42, ease: "easeInOut" },
-      });
-    }
-  }, [hasError, shakeAnim]);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      {label && (
-        <label
-          htmlFor={id}
-          style={{
-            fontSize: 11,
-            fontWeight: 600,
-            letterSpacing: "0.11em",
-            color: "#555",
-            textTransform: "uppercase",
-          }}
-        >
-          {label}
-        </label>
-      )}
-
-      <motion.div animate={shakeAnim} style={{ position: "relative" }}>
-        <input
-          id={id}
-          type={type}
-          placeholder={placeholder}
-          autoComplete={autoComplete}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          aria-invalid={hasError}
-          aria-describedby={error ? `${id}-error` : undefined}
-          style={{
-            width: "100%",
-            height: 52,
-            borderRadius: 12,
-            background: "#080808",
-            border: `1px solid ${
-              hasError ? "rgba(255,26,26,0.70)"
-              : focused  ? "rgba(255,26,26,0.50)"
-              :            "rgba(255,255,255,0.08)"
-            }`,
-            boxShadow: focused
-              ? "0 0 0 3px rgba(255,26,26,0.08)"
-              : hasError
-              ? "0 0 0 2px rgba(255,26,26,0.06)"
-              : "none",
-            color: "#F0F0F0",
-            fontSize: 14,
-            padding: suffix ? "0 48px 0 16px" : "0 16px",
-            outline: "none",
-            caretColor: RED,
-            transition: "border-color 0.18s, box-shadow 0.18s",
-            fontFamily: "inherit",
-            boxSizing: "border-box",
-          }}
-          {...registration}
-        />
-        {suffix && (
+    <div style={{ direction: "rtl", marginBottom: 16 }}>
+      <div style={{
+        position: "relative",
+        display: "flex",
+        alignItems: "center",
+      }}>
+        {/* Hexagonal/angular container */}
+        <div style={{
+          position: "relative",
+          width: "100%",
+          height: 56,
+        }}>
+          {/* Background with cyber edges */}
           <div style={{
             position: "absolute",
-            right: 14,
+            inset: 0,
+            background: "linear-gradient(135deg, rgba(155,92,255,0.08) 0%, rgba(5,5,8,0.95) 50%, rgba(79,195,247,0.06) 100%)",
+            clipPath: "polygon(8px 0%, calc(100% - 8px) 0%, 100% 8px, 100% calc(100% - 8px), calc(100% - 8px) 100%, 8px 100%, 0% calc(100% - 8px), 0% 8px)",
+            border: `1px solid ${
+              hasError ? "rgba(255,60,60,0.7)"
+              : focused ? "rgba(155,92,255,0.6)"
+              : "rgba(155,92,255,0.2)"
+            }`,
+            transition: "border-color 0.3s, box-shadow 0.3s",
+            boxShadow: focused
+              ? "0 0 20px rgba(155,92,255,0.15), 0 0 40px rgba(79,195,247,0.08)"
+              : hasError
+              ? "0 0 10px rgba(255,60,60,0.1)"
+              : "none",
+          }} />
+
+          <input
+            id={id}
+            type={type}
+            placeholder={placeholder}
+            autoComplete={autoComplete}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            aria-invalid={hasError}
+            aria-describedby={error ? `${id}-error` : undefined}
+            style={{
+              position: "relative",
+              width: "100%",
+              height: "100%",
+              background: "transparent",
+              border: "none",
+              outline: "none",
+              color: "#E8E8F0",
+              fontSize: 14,
+              padding: suffix ? "0 50px 0 16px" : "0 48px 0 16px",
+              fontFamily: "inherit",
+              caretColor: PURPLE_BRIGHT,
+              textAlign: "right",
+              direction: "rtl",
+              zIndex: 1,
+            }}
+            {...registration}
+          />
+
+          {/* Icon */}
+          <div style={{
+            position: "absolute",
+            right: 16,
             top: "50%",
             transform: "translateY(-50%)",
+            color: focused ? PURPLE_BRIGHT : "rgba(155,92,255,0.4)",
+            transition: "color 0.3s",
+            zIndex: 2,
             display: "flex",
             alignItems: "center",
           }}>
-            {suffix}
+            {icon}
           </div>
-        )}
-      </motion.div>
+
+          {/* Suffix (eye toggle) */}
+          {suffix && (
+            <div style={{
+              position: "absolute",
+              left: 16,
+              top: "50%",
+              transform: "translateY(-50%)",
+              zIndex: 2,
+              display: "flex",
+              alignItems: "center",
+            }}>
+              {suffix}
+            </div>
+          )}
+        </div>
+      </div>
 
       <AnimatePresence>
         {error && (
@@ -535,9 +459,14 @@ function InputField({ id, label, type, placeholder, autoComplete, error, hasErro
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -3 }}
             transition={{ duration: 0.14 }}
-            style={{ fontSize: 12, color: "#FF3333", margin: 0, display: "flex", alignItems: "center", gap: 5 }}
+            style={{
+              fontSize: 12,
+              color: "#FF3C3C",
+              margin: "6px 0 0 0",
+              direction: "rtl",
+              textAlign: "right",
+            }}
           >
-            <span style={{ display: "inline-block", width: 4, height: 4, borderRadius: "50%", background: "#FF3333", flexShrink: 0 }} />
             {error}
           </motion.p>
         )}
@@ -546,101 +475,170 @@ function InputField({ id, label, type, placeholder, autoComplete, error, hasErro
   );
 }
 
-// ── Sign In button ─────────────────────────────────────────────────────────────
-
-function SignInButton({
-  loading,
-  disabled,
-  spiderId,
-}: { loading: boolean; disabled: boolean; spiderId: string }) {
-  const [hovered, setHovered] = useState(false);
-  const [pressed, setPressed] = useState(false);
-
-  return (
-    <button
-      type="submit"
-      disabled={disabled}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => { setHovered(false); setPressed(false); }}
-      onMouseDown={() => setPressed(true)}
-      onMouseUp={() => setPressed(false)}
-      style={{
-        width: "100%",
-        height: 52,
-        borderRadius: 14,
-        background: hovered && !disabled ? RED_HOVER : RED,
-        border: "none",
-        color: "#FFFFFF",
-        fontSize: 14,
-        fontWeight: 700,
-        letterSpacing: "0.05em",
-        textTransform: "uppercase",
-        cursor: disabled ? "not-allowed" : "pointer",
-        opacity: disabled ? 0.60 : 1,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 10,
-        boxShadow: hovered && !disabled
-          ? "0 0 24px rgba(255,26,26,0.45), 0 4px 14px rgba(255,26,26,0.25)"
-          : "0 0 12px rgba(255,26,26,0.20), 0 2px 6px rgba(255,26,26,0.12)",
-        transform: pressed && !disabled ? "scale(0.985)" : "scale(1)",
-        transition: "background 0.2s, box-shadow 0.2s, transform 0.12s",
-        fontFamily: "inherit",
-        outline: "none",
-      }}
-      aria-label={loading ? "Authenticating…" : "Sign In"}
-    >
-      {/* Inline micro spider mark — glows while loading */}
-      <svg
-        width="16"
-        height="16"
-        viewBox="0 0 120 120"
-        fill="none"
-        aria-hidden="true"
-        style={{
-          willChange: "filter",
-          animation: loading ? "spiderGlowAuth 1.4s ease-in-out infinite" : "none",
-        }}
-      >
-        <ellipse cx="60" cy="74" rx="18" ry="22" fill="rgba(255,255,255,0.92)" />
-        <ellipse cx="60" cy="50" rx="11" ry="10" fill="rgba(255,255,255,0.92)" />
-        <circle  cx="60" cy="35" r="8"           fill="rgba(255,255,255,0.88)" />
-        <path d="M 47,46 L 28,28" stroke="rgba(255,255,255,0.85)" strokeWidth="4" strokeLinecap="round" />
-        <path d="M 73,46 L 92,28" stroke="rgba(255,255,255,0.85)" strokeWidth="4" strokeLinecap="round" />
-        <path d="M 47,55 L 22,44" stroke="rgba(255,255,255,0.72)" strokeWidth="3.5" strokeLinecap="round" />
-        <path d="M 73,55 L 98,44" stroke="rgba(255,255,255,0.72)" strokeWidth="3.5" strokeLinecap="round" />
-        <path d="M 47,64 L 24,72" stroke="rgba(255,255,255,0.65)" strokeWidth="3.5" strokeLinecap="round" />
-        <path d="M 73,64 L 96,72" stroke="rgba(255,255,255,0.65)" strokeWidth="3.5" strokeLinecap="round" />
-        <path d="M 47,72 L 30,88" stroke="rgba(255,255,255,0.72)" strokeWidth="4" strokeLinecap="round" />
-        <path d="M 73,72 L 90,88" stroke="rgba(255,255,255,0.72)" strokeWidth="4" strokeLinecap="round" />
-      </svg>
-
-      <span>{loading ? "Authenticating…" : "Sign In"}</span>
-    </button>
-  );
-}
-
 // ── Eye icon ───────────────────────────────────────────────────────────────────
 
 function EyeIcon({ open }: { open: boolean }) {
   return open ? (
-    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "rgba(176,124,255,0.6)" }}>
       <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
       <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
       <line x1="1" y1="1" x2="23" y2="23" />
     </svg>
   ) : (
-    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "rgba(176,124,255,0.4)" }}>
       <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
       <circle cx="12" cy="12" r="3" />
     </svg>
   );
 }
 
-// ── Red link ───────────────────────────────────────────────────────────────────
+// ── Cyber Button ───────────────────────────────────────────────────────────────
 
-function RedLink({ href, children }: { href: string; children: React.ReactNode }) {
+function CyberButton({ loading, disabled, children }: { loading: boolean; disabled: boolean; children: React.ReactNode }) {
+  const [hovered, setHovered] = useState(false);
+
+  return (
+    <button
+      type="submit"
+      disabled={disabled}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        width: "100%",
+        height: 56,
+        position: "relative",
+        background: hovered && !disabled
+          ? "linear-gradient(135deg, rgba(155,92,255,0.95) 0%, rgba(79,195,247,0.85) 100%)"
+          : "linear-gradient(135deg, rgba(155,92,255,0.75) 0%, rgba(79,195,247,0.65) 100%)",
+        border: "1px solid rgba(155,92,255,0.5)",
+        clipPath: "polygon(8px 0%, calc(100% - 8px) 0%, 100% 8px, 100% calc(100% - 8px), calc(100% - 8px) 100%, 8px 100%, 0% calc(100% - 8px), 0% 8px)",
+        color: "#FFFFFF",
+        fontSize: 18,
+        fontWeight: 700,
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.5 : 1,
+        fontFamily: "'Cairo', 'Tajawal', sans-serif",
+        letterSpacing: "0.05em",
+        direction: "rtl",
+        transition: "all 0.3s ease",
+        boxShadow: hovered && !disabled
+          ? "0 0 25px rgba(155,92,255,0.4), 0 0 50px rgba(79,195,247,0.2)"
+          : "0 0 15px rgba(155,92,255,0.2), 0 0 30px rgba(79,195,247,0.1)",
+        animation: loading ? "buttonPulse 1.5s ease-in-out infinite" : "none",
+      }}
+    >
+      <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+        <span>{children}</span>
+        {loading && (
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="10" strokeOpacity="0.3" />
+            <path d="M12 2a10 10 0 0 1 10 10" strokeLinecap="round" />
+          </svg>
+        )}
+        {!loading && (
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <path d="M19 12H5" />
+            <path d="M12 5l-7 7 7 7" />
+          </svg>
+        )}
+      </span>
+    </button>
+  );
+}
+
+// ── OAuth buttons ──────────────────────────────────────────────────────────────
+
+function GitHubIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="currentColor">
+      <path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0 1 12 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z" />
+    </svg>
+  );
+}
+
+function GoogleIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+      <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
+      <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+      <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
+      <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+    </svg>
+  );
+}
+
+function MicrosoftIcon() {
+  return (
+    <svg viewBox="0 0 21 21" width="20" height="20" aria-hidden="true">
+      <rect x="1" y="1" width="9" height="9" fill="#F25022" />
+      <rect x="11" y="1" width="9" height="9" fill="#7FBA00" />
+      <rect x="1" y="11" width="9" height="9" fill="#00A4EF" />
+      <rect x="11" y="11" width="9" height="9" fill="#FFB900" />
+    </svg>
+  );
+}
+
+type OAuthProvider = "google" | "github" | "microsoft";
+
+function OAuthIconBtn({
+  provider,
+  disabled,
+  loading,
+  onClick,
+}: {
+  provider: OAuthProvider;
+  disabled: boolean;
+  loading: boolean;
+  onClick: () => void;
+}) {
+  const [hovered, setHovered] = useState(false);
+
+  const cfg = {
+    google:    { icon: <GoogleIcon />,    label: "Google" },
+    github:    { icon: <GitHubIcon />,   label: "GitHub" },
+    microsoft: { icon: <MicrosoftIcon />, label: "Microsoft" },
+  }[provider];
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        width: 52,
+        height: 52,
+        borderRadius: "50%",
+        background: hovered && !disabled
+          ? "rgba(155,92,255,0.15)"
+          : "rgba(155,92,255,0.05)",
+        border: `1px solid ${hovered ? "rgba(155,92,255,0.5)" : "rgba(155,92,255,0.15)"}`,
+        color: hovered ? PURPLE_BRIGHT : "rgba(155,92,255,0.6)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.4 : 1,
+        transition: "all 0.3s ease",
+        boxShadow: hovered ? "0 0 15px rgba(155,92,255,0.2)" : "none",
+      }}
+      aria-label={`Continue with ${cfg.label}`}
+      title={cfg.label}
+    >
+      {loading ? (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="12" cy="12" r="10" strokeOpacity="0.3" />
+          <path d="M12 2a10 10 0 0 1 10 10" strokeLinecap="round" />
+        </svg>
+      ) : cfg.icon}
+    </button>
+  );
+}
+
+// ── Cyber link ─────────────────────────────────────────────────────────────────
+
+function CyberLink({ href, children }: { href: string; children: React.ReactNode }) {
   const [hovered, setHovered] = useState(false);
   return (
     <Link href={href}>
@@ -648,12 +646,13 @@ function RedLink({ href, children }: { href: string; children: React.ReactNode }
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         style={{
-          color: hovered ? RED_HOVER : RED,
+          color: hovered ? PURPLE_BRIGHT : PURPLE,
           fontWeight: 600,
           textDecoration: hovered ? "underline" : "none",
           textUnderlineOffset: 3,
           cursor: "pointer",
-          transition: "color 0.15s",
+          transition: "color 0.2s",
+          fontSize: 13,
         }}
       >
         {children}
@@ -662,30 +661,20 @@ function RedLink({ href, children }: { href: string; children: React.ReactNode }
   );
 }
 
-// ── Stagger helper ─────────────────────────────────────────────────────────────
-
-const DELAY = 0.065;
-const fadeUp = (i: number) => ({
-  initial:    { opacity: 0, y: 7 },
-  animate:    { opacity: 1, y: 0 },
-  transition: { duration: 0.24, delay: i * DELAY, ease: "easeOut" },
-});
-
 // ── Main export ────────────────────────────────────────────────────────────────
 
 export default function Login() {
-  const [, setLocation]  = useLocation();
+  const [, setLocation] = useLocation();
   const { login: authenticate, isAuthenticated } = useAuth();
-  const [showPassword,   setShowPassword]  = useState(false);
-  const [loadingOAuth,   setLoadingOAuth]  = useState<OAuthProvider | null>(null);
-  const [oauthError,     setOauthError]    = useState<string | null>(null);
-  const skipSplash = typeof window !== "undefined"
-    && new URLSearchParams(window.location.search).get("nosplash") === "1";
-  const [splashDone, setSplashDone] = useState(skipSplash);
-  const uid = useId().replace(/:/g, "lg");
+  const [showPassword,  setShowPassword]  = useState(false);
+  const [loadingOAuth,  setLoadingOAuth]  = useState<OAuthProvider | null>(null);
+  const [oauthError,    setOauthError]    = useState<string | null>(null);
+  const [pageReady, setPageReady] = useState(false);
 
   useEffect(() => {
     ensureKeyframes();
+    const t = setTimeout(() => setPageReady(true), 100);
+    return () => clearTimeout(t);
   }, []);
 
   useEffect(() => {
@@ -710,14 +699,14 @@ export default function Login() {
           refresh_token: res.refresh_token,
           token_type:    res.token_type,
         });
-        toast.success("Welcome back!");
+        toast.success("مرحباً بعودتك!");
         setLocation("/dashboard");
       },
       onError: (err) => {
         const message =
           (err as { data?: { error?: string } }).data?.error ||
-          "Please check your credentials and try again.";
-        toast.error("Sign in failed", { description: message });
+          "يرجى التحقق من بياناتك والمحاولة مرة أخرى.";
+        toast.error("فشل تسجيل الدخول", { description: message });
       },
     });
   };
@@ -726,59 +715,56 @@ export default function Login() {
     setLoadingOAuth(provider);
     setOauthError(null);
     try {
-      const res = await fetch(`/api/v1/auth/oauth/${provider}/authorize`);
+      const providerName = provider === "microsoft" ? "github" : provider;
+      const res = await fetch(`/api/v1/auth/oauth/${providerName}/authorize`);
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { error?: string };
         setOauthError(
           body.error ??
-          `${provider === "google" ? "Google" : "GitHub"} sign-in is not available right now.`
+          `تسجيل الدخول عبر ${provider} غير متاح حالياً.`
         );
         return;
       }
       const { url } = (await res.json()) as { url: string };
       window.location.href = url;
     } catch {
-      setOauthError("Network error. Please try again.");
+      setOauthError("خطأ في الاتصال. يرجى المحاولة مرة أخرى.");
     } finally {
       setLoadingOAuth(null);
     }
   };
 
   const anyOAuthLoading = !!loadingOAuth;
-  const onSplashComplete = useCallback(() => setSplashDone(true), []);
+
+  // User icon
+  const UserIcon = (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+      <circle cx="12" cy="7" r="4" />
+    </svg>
+  );
+
+  // Lock icon
+  const LockIcon = (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+    </svg>
+  );
 
   return (
     <>
-      {/* ── Page background: pure black + barely-visible radial glow ── */}
-      <div
-        aria-hidden="true"
-        style={{
-          position: "fixed",
-          inset: 0,
-          background: `
-            radial-gradient(ellipse 70% 55% at 50% 38%, rgba(120,0,0,0.12) 0%, transparent 70%),
-            radial-gradient(ellipse 50% 40% at 50% 85%, rgba(80,0,0,0.08) 0%, transparent 60%),
-            #000000
-          `,
-          zIndex: 0,
-        }}
-      />
+      {/* ── Background ── */}
+      <CodeBackground />
 
-      {/* ── Splash ── */}
+      {/* ── Main content ── */}
       <AnimatePresence>
-        {!splashDone && (
-          <SplashScreen key="splash" onComplete={onSplashComplete} />
-        )}
-      </AnimatePresence>
-
-      {/* ── Login content ── */}
-      <AnimatePresence>
-        {splashDone && (
+        {pageReady && (
           <motion.div
-            key="login"
+            key="login-page"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            transition={{ duration: 0.45, ease: "easeOut" }}
+            transition={{ duration: 0.6, ease: "easeOut" }}
             style={{
               position: "relative",
               zIndex: 10,
@@ -787,224 +773,211 @@ export default function Login() {
               flexDirection: "column",
               alignItems: "center",
               justifyContent: "center",
-              padding: "24px 16px",
+              padding: "40px 20px",
             }}
           >
-            {/* ── Glass Card ── */}
-            <div
+            {/* ── Logo Section ── */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.1 }}
+            >
+              <KodakLogo authenticating={isPending} />
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.4, delay: 0.3 }}
+            >
+              <Tagline />
+            </motion.div>
+
+            {/* ── Input Fields ── */}
+            <motion.div
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.4 }}
+              style={{ width: "100%", maxWidth: 380 }}
+            >
+              <CyberInput
+                id="email"
+                placeholder="البريد الإلكتروني أو اسم المستخدم"
+                type="text"
+                autoComplete="username"
+                icon={UserIcon}
+                error={errors.email?.message}
+                hasError={!!errors.email}
+                registration={form.register("email")}
+              />
+
+              <CyberInput
+                id="password"
+                placeholder="كلمة المرور"
+                type={showPassword ? "text" : "password"}
+                autoComplete="current-password"
+                icon={LockIcon}
+                error={errors.password?.message}
+                hasError={!!errors.password}
+                registration={form.register("password")}
+                suffix={
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    onClick={() => setShowPassword(v => !v)}
+                    aria-label={showPassword ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      color: "rgba(176,124,255,0.4)",
+                      display: "flex",
+                      alignItems: "center",
+                      padding: 4,
+                      transition: "color 0.2s",
+                    }}
+                    onMouseEnter={e => (e.currentTarget.style.color = PURPLE_BRIGHT)}
+                    onMouseLeave={e => (e.currentTarget.style.color = "rgba(176,124,255,0.4)")}
+                  >
+                    <EyeIcon open={showPassword} />
+                  </button>
+                }
+              />
+            </motion.div>
+
+            {/* ── Forgot password ── */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.3, delay: 0.5 }}
               style={{
                 width: "100%",
-                maxWidth: 420,
-                background: "rgba(10,10,10,0.90)",
-                backdropFilter: "blur(8px)",
-                WebkitBackdropFilter: "blur(8px)",
-                borderRadius: 20,
-                border: "1px solid rgba(255,26,26,0.12)",
-                boxShadow: `
-                  0 0 0 1px rgba(255,255,255,0.04),
-                  0 24px 56px rgba(0,0,0,0.85),
-                  0 8px 20px rgba(0,0,0,0.55),
-                  inset 0 1px 0 rgba(255,255,255,0.04)
-                `,
-                position: "relative",
-                overflow: "hidden",
+                maxWidth: 380,
+                textAlign: "right",
+                direction: "rtl",
+                marginBottom: 24,
               }}
             >
-              {/* Top accent line */}
-              <div style={{
-                position: "absolute", top: 0, left: "20%", right: "20%", height: 1,
-                background: "linear-gradient(to right, transparent, rgba(255,26,26,0.50), transparent)",
-              }} />
+              <CyberLink href="/forgot-password">نسيت كلمة المرور؟</CyberLink>
+            </motion.div>
 
-              <div style={{ padding: "36px 32px 32px" }}>
-
-                {/* ── Header ── */}
-                <motion.div {...fadeUp(0)} style={{ textAlign: "center", marginBottom: 28 }}>
-                  {/* Spider — full CSS animated, alive */}
-                  <div style={{ display: "inline-block", marginBottom: 18 }}>
-                    <SpiderSVG
-                      size={88}
-                      id={`${uid}-card`}
-                      authenticating={isPending}
-                    />
-                  </div>
-
-                  <h1 style={{
-                    fontSize: 24,
-                    fontWeight: 800,
-                    color: "#FFFFFF",
-                    margin: "0 0 6px",
-                    letterSpacing: "-0.025em",
-                    lineHeight: 1.2,
-                  }}>
-                    Intelligence Starts Here
-                  </h1>
-                  <p style={{
-                    fontSize: 13,
-                    color: "#555",
-                    margin: 0,
-                    letterSpacing: "0.01em",
-                  }}>
-                    Sign in to your AI workspace
-                  </p>
-                </motion.div>
-
-                {/* ── OAuth ── */}
-                <motion.div {...fadeUp(1)} style={{ display: "flex", flexDirection: "column", gap: 9, marginBottom: 22 }}>
-                  <OAuthButton
-                    provider="google"
-                    loading={loadingOAuth === "google"}
-                    disabled={anyOAuthLoading || isPending}
-                    onClick={() => handleOAuth("google")}
-                  />
-                  <OAuthButton
-                    provider="github"
-                    loading={loadingOAuth === "github"}
-                    disabled={anyOAuthLoading || isPending}
-                    onClick={() => handleOAuth("github")}
-                  />
-
-                  <AnimatePresence>
-                    {oauthError && (
-                      <motion.p
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: "auto" }}
-                        exit={{ opacity: 0, height: 0 }}
-                        style={{ fontSize: 12, color: "#886600", textAlign: "center", margin: 0 }}
-                      >
-                        {oauthError.includes("not configured") || oauthError.includes("disabled")
-                          ? "Social sign-in isn't enabled yet — use email & password below."
-                          : oauthError}
-                      </motion.p>
-                    )}
-                  </AnimatePresence>
-                </motion.div>
-
-                {/* ── Divider ── */}
-                <motion.div {...fadeUp(2)} style={{ marginBottom: 20 }}>
-                  <Divider />
-                </motion.div>
-
-                {/* ── Form ── */}
-                <form
-                  onSubmit={form.handleSubmit(onSubmit)}
-                  noValidate
-                  style={{ display: "flex", flexDirection: "column", gap: 14 }}
+            {/* ── Login Button ── */}
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.55 }}
+              style={{ width: "100%", maxWidth: 380 }}
+            >
+              <form onSubmit={form.handleSubmit(onSubmit)} noValidate>
+                <CyberButton
+                  loading={isPending}
+                  disabled={isPending || anyOAuthLoading}
                 >
-                  {/* Email */}
-                  <motion.div {...fadeUp(3)}>
-                    <InputField
-                      id="email"
-                      label="Email"
-                      type="email"
-                      placeholder="you@example.com"
-                      autoComplete="email"
-                      error={errors.email?.message}
-                      hasError={!!errors.email}
-                      registration={form.register("email")}
-                    />
-                  </motion.div>
+                  دخول
+                </CyberButton>
+              </form>
 
-                  {/* Password */}
-                  <motion.div {...fadeUp(4)}>
-                    <div style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      marginBottom: 6,
-                    }}>
-                      <label
-                        htmlFor="password"
-                        style={{
-                          fontSize: 11,
-                          fontWeight: 600,
-                          letterSpacing: "0.11em",
-                          color: "#555",
-                          textTransform: "uppercase",
-                        }}
-                      >
-                        Password
-                      </label>
-                      <RedLink href="/forgot-password">Forgot password?</RedLink>
-                    </div>
-                    <InputField
-                      id="password"
-                      label=""
-                      type={showPassword ? "text" : "password"}
-                      autoComplete="current-password"
-                      error={errors.password?.message}
-                      hasError={!!errors.password}
-                      registration={form.register("password")}
-                      suffix={
-                        <button
-                          type="button"
-                          tabIndex={-1}
-                          onClick={() => setShowPassword(v => !v)}
-                          aria-label={showPassword ? "Hide password" : "Show password"}
-                          style={{
-                            background: "none",
-                            border: "none",
-                            cursor: "pointer",
-                            color: "#484848",
-                            display: "flex",
-                            alignItems: "center",
-                            padding: 2,
-                            transition: "color 0.15s",
-                          }}
-                          onMouseEnter={e => (e.currentTarget.style.color = RED)}
-                          onMouseLeave={e => (e.currentTarget.style.color = "#484848")}
-                        >
-                          <EyeIcon open={showPassword} />
-                        </button>
-                      }
-                    />
-                  </motion.div>
+              <AnimatePresence>
+                {oauthError && (
+                  <motion.p
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    style={{
+                      fontSize: 12,
+                      color: "rgba(255,150,100,0.8)",
+                      textAlign: "center",
+                      margin: "10px 0 0",
+                      direction: "rtl",
+                    }}
+                  >
+                    {oauthError}
+                  </motion.p>
+                )}
+              </AnimatePresence>
+            </motion.div>
 
-                  {/* Submit */}
-                  <motion.div {...fadeUp(5)} style={{ marginTop: 4 }}>
-                    <SignInButton
-                      loading={isPending}
-                      disabled={isPending || anyOAuthLoading}
-                      spiderId={uid}
-                    />
-                  </motion.div>
-                </form>
-
-                {/* ── Sign up ── */}
-                <motion.p
-                  {...fadeUp(6)}
-                  style={{
-                    textAlign: "center",
-                    fontSize: 13,
-                    color: "#444",
-                    marginTop: 20,
-                    marginBottom: 0,
-                  }}
-                >
-                  Don&apos;t have an account?{" "}
-                  <RedLink href="/register">Sign up</RedLink>
-                </motion.p>
-              </div>
-
-              {/* Bottom accent */}
-              <div style={{
-                position: "absolute", bottom: 0, left: "30%", right: "30%", height: 1,
-                background: "linear-gradient(to right, transparent, rgba(255,255,255,0.04), transparent)",
-              }} />
-            </div>
-
-            {/* ── Footer ── */}
-            <motion.p
-              {...fadeUp(7)}
+            {/* ── OR Divider ── */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.3, delay: 0.65 }}
               style={{
-                marginTop: 20,
-                fontSize: 11,
-                color: "#2A2A2A",
-                textAlign: "center",
-                letterSpacing: "0.02em",
+                display: "flex",
+                alignItems: "center",
+                gap: 16,
+                width: "100%",
+                maxWidth: 380,
+                margin: "20px 0",
               }}
             >
-              By continuing, you agree to our Terms of Service and Privacy Policy.
+              <div style={{
+                flex: 1,
+                height: 1,
+                background: "linear-gradient(to right, transparent, rgba(155,92,255,0.3))",
+              }} />
+              <span style={{
+                color: "rgba(155,92,255,0.5)",
+                fontSize: 13,
+                fontWeight: 600,
+                whiteSpace: "nowrap",
+              }}>
+                أو
+              </span>
+              <div style={{
+                flex: 1,
+                height: 1,
+                background: "linear-gradient(to left, transparent, rgba(155,92,255,0.3))",
+              }} />
+            </motion.div>
+
+            {/* ── OAuth Buttons ── */}
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.7 }}
+              style={{
+                display: "flex",
+                gap: 16,
+                justifyContent: "center",
+              }}
+            >
+              <OAuthIconBtn
+                provider="github"
+                loading={loadingOAuth === "github"}
+                disabled={anyOAuthLoading || isPending}
+                onClick={() => handleOAuth("github")}
+              />
+              <OAuthIconBtn
+                provider="google"
+                loading={loadingOAuth === "google"}
+                disabled={anyOAuthLoading || isPending}
+                onClick={() => handleOAuth("google")}
+              />
+              <OAuthIconBtn
+                provider="microsoft"
+                loading={loadingOAuth === "microsoft"}
+                disabled={anyOAuthLoading || isPending}
+                onClick={() => handleOAuth("microsoft")}
+              />
+            </motion.div>
+
+            {/* ── Sign up link ── */}
+            <motion.p
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.3, delay: 0.8 }}
+              style={{
+                textAlign: "center",
+                direction: "rtl",
+                marginTop: 28,
+                marginBottom: 0,
+              }}
+            >
+              <span style={{ color: "rgba(155,92,255,0.5)", fontSize: 13 }}>
+                ليس لديك حساب؟{" "}
+              </span>
+              <CyberLink href="/register">أنشئ حساب جديد</CyberLink>
             </motion.p>
           </motion.div>
         )}
