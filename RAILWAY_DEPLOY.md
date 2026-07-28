@@ -51,6 +51,21 @@ To apply schema changes manually:
 pnpm --filter @workspace/db run push
 ```
 
+## Persistent storage for generated projects
+
+The AI agent generates project files at runtime (in `data/projects/`).
+By default this uses the container filesystem which is **wiped on every deploy**.
+To persist generated projects across deploys:
+
+1. **Add a Railway Volume** → your service → Volumes → New Volume
+   - Mount path: `/data`
+2. **Add the env var** in your service settings:
+   ```
+   PROJECT_FILES_BASE=/data/projects
+   ```
+
+That's it — generated project files will survive restarts and redeployments.
+
 ## Required environment variables
 
 | Variable | Description | Required |
@@ -62,3 +77,6 @@ pnpm --filter @workspace/db run push
 | `PROVIDER_ENCRYPTION_KEY` | 32-byte hex — encrypts AI provider keys | ✅ |
 | `OPENROUTER_API_KEY` | For LLM features (openrouter.ai/keys) | Optional |
 | `NODE_ENV` | Set to `production` | ✅ |
+| `PROJECT_FILES_BASE` | Path to persistent volume (e.g. `/data/projects`) | Optional* |
+
+*Required only if you want generated project files to persist across deploys.
