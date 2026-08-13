@@ -4,7 +4,8 @@ nixPkgs = ["nodejs_20", "pnpm", "python311", "uv"]
 [phases.install]
 cmds = [
   "pnpm install --no-frozen-lockfile",
-  "uv pip install --system -r requirements-g4f.txt",
+  "uv venv /app/.venv --python python3",
+  "uv pip install --python /app/.venv/bin/python -r requirements-g4f.txt",
 ]
 
 [phases.build]
@@ -14,4 +15,4 @@ cmds = [
 ]
 
 [start]
-cmd = "PORT=$PORT NODE_ENV=production node --enable-source-maps ./artifacts/api-server/dist/index.mjs"
+cmd = "PYTHON_BIN=/app/.venv/bin/python PORT=$PORT NODE_ENV=production node --enable-source-maps ./artifacts/api-server/dist/index.mjs"
