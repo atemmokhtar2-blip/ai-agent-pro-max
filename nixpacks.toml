@@ -1,10 +1,10 @@
 [phases.setup]
-nixPkgs = ["nodejs_20", "pnpm", "python311", "python311Packages.pip"]
+nixPkgs = ["nodejs_20", "pnpm", "python311", "uv"]
 
 [phases.install]
 cmds = [
   "pnpm install --no-frozen-lockfile",
-  "python3 -m pip install --break-system-packages -r requirements-g4f.txt",
+  "uv pip install --system -r requirements-g4f.txt",
 ]
 
 [phases.build]
