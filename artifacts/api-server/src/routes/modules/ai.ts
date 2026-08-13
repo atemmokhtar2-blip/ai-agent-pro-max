@@ -382,38 +382,38 @@ router.post("/conversations/:id/messages", validateBody(sendMessageSchema), asyn
     .where(eq(aiMessagesTable.conversationId, id))
     .orderBy(aiMessagesTable.createdAt);
 
-  // 3. Route through the AI orchestrator (or return helpful placeholder)
+  // 3. Route through the configured provider, or through ProviderManager's
+  // no-key fallback (g4f) when the user has not configured one.
   const active = await getActiveProvider(userId);
   let assistantContent: string;
   let responseModel: string | undefined;
   let routingMetadata: Record<string, unknown> | null = null;
 
-  if (!active) {
-    assistantContent =
-      "No AI provider is configured yet. Go to **Settings → AI Providers** to connect one of the supported providers:\n\n" +
-      "- **OpenRouter** — 200+ models, many free, get a free API key at openrouter.ai\n" +
-      "- **DeepSeek** — free credits on sign-up at platform.deepseek.com\n" +
-      "- **Local (Ollama)** — run models on your own machine, completely free\n" +
-      "- **Custom endpoint** — any OpenAI-compatible server";
-  } else {
-    try {
-      const chatMessages = history.slice(0, -1).map((m) => ({
-        role: m.role as "user" | "assistant" | "system",
-        content: m.content,
-      }));
-      chatMessages.push({ role: "user", content });
+  try {
+    const chatMessages = history.slice(0, -1).map((m) => ({
+      role: m.role as "user" | "assistant" | "system",
+      content: m.content,
+    }));
+    chatMessages.push({ role: "user", content });
 
+    if (!active) {
+      const response = await providerManager.complete(chatMessages, {
+        taskType: "general",
+        model: model ?? undefined,
+      });
+      assistantContent = response.content;
+      responseModel = response.model;
+      routingMetadata = { provider: response.providerSlug, fallback: true };
+    } else {
       const orchestration = aiRouter.route({
         messages: chatMessages,
         userProviderConfig: active.config,
         requestedModel: model ?? undefined,
       });
-
       const response = await orchestration.provider.chat(
         { messages: chatMessages },
         orchestration.resolvedConfig,
       );
-
       assistantContent = response.content;
       responseModel = response.model ?? orchestration.decision.selectedModelId;
       routingMetadata = {
@@ -424,9 +424,9 @@ router.post("/conversations/:id/messages", validateBody(sendMessageSchema), asyn
         confidence: orchestration.decision.classification.confidence,
         signals: orchestration.decision.classification.signals,
       };
-    } catch (err) {
-      assistantContent = `Error from provider: ${err instanceof Error ? err.message : String(err)}`;
     }
+  } catch (err) {
+    assistantContent = `Error from provider: ${err instanceof Error ? err.message : String(err)}`;
   }
 
   // 4. Persist assistant reply

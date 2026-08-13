@@ -1,0 +1,2 @@
+# Optional no-key AI fallback used by the API server.
+g4f>=0.4.9.7

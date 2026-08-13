@@ -1493,8 +1493,8 @@ export class ExecutionService {
     }
 
     // ── Pre-flight: verify at least one LLM provider is reachable ──────────────
-    // Without a provider, all LLM batches silently produce 0 files. Fail fast
-    // with a clear, actionable message so the user knows exactly what to fix.
+    // g4f is a no-key fallback, so only fail when every provider is unavailable
+    // and the operator explicitly disabled g4f.
     if (signal?.aborted) return;
     {
       const hasEnvKey = Boolean(process.env["OPENROUTER_API_KEY"]);
@@ -1507,14 +1507,13 @@ export class ExecutionService {
         hasDbKey = (row?.n ?? 0) > 0;
       } catch { /* DB unavailable — fall through */ }
 
-      if (!hasEnvKey && !hasDbKey) {
+      const g4fDisabled = process.env["G4F_DISABLED"] === "1";
+      if (!hasEnvKey && !hasDbKey && g4fDisabled) {
         send({
           type: "exec_error",
           message:
-            "No AI provider configured. " +
-            "Set OPENROUTER_API_KEY in the Secrets panel (🔒 in the sidebar) " +
-            "or add a provider key in Settings → AI Providers. " +
-            "Without a key the AI cannot write source files.",
+            "No AI provider configured and the g4f fallback is disabled. " +
+            "Set an API key or remove G4F_DISABLED=1 to enable the no-key fallback.",
           retryable: false,
         });
         return;

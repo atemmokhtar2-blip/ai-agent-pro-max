@@ -91,6 +91,7 @@ import { cohereAdapter      } from "./adapters/cohere.js";
 import { huggingfaceAdapter } from "./adapters/huggingface.js";
 import { hfSpaceAdapter     } from "./adapters/hf-space.js";
 import { ModelDiscoveryService } from "./model-discovery.js";
+import { completeWithG4F } from "../g4f-fallback.js";
 
 const ALL_ADAPTERS = [
   hfSpaceAdapter,
@@ -566,10 +567,27 @@ export class ProviderManager {
       }
     }
 
-    throw new Error(
-      `[ProviderManager] All providers exhausted after ${totalRetries} retries. ` +
-      `Tried: ${[...new Set([...this.providers.keys()])].join(", ")}`,
-    );
+    // Last resort: g4f needs no API key and is enabled by default. It is
+    // intentionally outside the provider/key registry so it remains available
+    // even when the database has no configured providers.
+    try {
+      const fallback = await completeWithG4F(optimized, options);
+      console.warn("[ProviderManager] API providers exhausted — using g4f fallback");
+      return {
+        content: fallback.content,
+        model: fallback.model,
+        providerSlug: "g4f",
+        keyId: "g4f-no-key",
+        latencyMs: 0,
+        retries: totalRetries,
+      };
+    } catch (g4fErr) {
+      const tried = [...new Set([...this.providers.keys()])].join(", ");
+      throw new Error(
+        `[ProviderManager] All providers exhausted and g4f fallback failed. ` +
+        `Tried: ${tried}. ${g4fErr instanceof Error ? g4fErr.message : String(g4fErr)}`,
+      );
+    }
   }
 
   // ── Provider ordering (by priority, enabled first) ─────────────────────────
