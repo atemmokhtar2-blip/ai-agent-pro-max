@@ -688,6 +688,10 @@ router.post("/planner/stream", validateBody(plannerSchema), async (req, res) => 
     }
 
     // ── Run streaming planner ───────────────────────────────────────────────
+    // The UI stores the user's active provider in providerConfigsTable, while
+    // ProviderManager uses the global aiProviderKeysTable. Prefer the user's
+    // configured provider here so planner and chat use the same working AI.
+    const activePlannerProvider = await getActiveProvider(userId);
     let finalContent = "";
     let finalModel = "";
     let isConversation = false;
@@ -708,15 +712,36 @@ router.post("/planner/stream", validateBody(plannerSchema), async (req, res) => 
         sendEvent(event);
       },
       abortController.signal,
-      (msgs, opts) =>
-        providerManager.complete(msgs as Array<{ role: "user" | "assistant" | "system"; content: string }>, {
+      async (msgs, opts) => {
+        const typedMessages = msgs as Array<{ role: "user" | "assistant" | "system"; content: string }>;
+        if (activePlannerProvider) {
+          try {
+            const routed = aiRouter.route({
+              messages: typedMessages,
+              userProviderConfig: activePlannerProvider.config,
+              requestedModel: activePlannerProvider.config.defaultModel ?? undefined,
+            });
+            const response = await routed.provider.chat(
+              { messages: typedMessages },
+              routed.resolvedConfig,
+            );
+            return { content: response.content, model: response.model ?? activePlannerProvider.config.defaultModel ?? "configured-provider" };
+          } catch (activeProviderError) {
+            console.warn(
+              "[Planner] Active user provider failed; falling back to ProviderManager:",
+              activeProviderError instanceof Error ? activeProviderError.message : String(activeProviderError),
+            );
+          }
+        }
+        return providerManager.complete(typedMessages, {
           taskType: opts.taskType as TaskType | undefined,
           maxTokens: opts.maxTokens,
           temperature: opts.temperature,
           onRotationEvent: (evt) => {
             if (!aborted) sendEvent({ ...evt, type: "provider_status" });
           },
-        }),
+        });
+      },
     );
 
     if (aborted) return;

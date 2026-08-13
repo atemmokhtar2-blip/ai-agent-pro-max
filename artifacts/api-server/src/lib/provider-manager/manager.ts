@@ -352,8 +352,10 @@ export class ProviderManager {
       console.log(`[ProviderManager] Ready — ${this.providers.size} providers, ${total} keys`);
     } catch (err) {
       console.error("[ProviderManager] Initialization failed:", (err as Error).message);
-      // Fall back to env-only mode
+      // Fall back to in-memory providers plus env keys. Keep the built-in
+      // no-key HF provider available even when DB initialization fails.
       this.bootstrapFromEnv();
+      await this.seedHFSpaceDefaultKey();
     }
   }
 
