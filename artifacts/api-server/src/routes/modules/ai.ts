@@ -22,6 +22,7 @@ import type { ProviderConfig } from "@workspace/ai-provider";
 import { aiRouter, modelRegistry, TASK_TYPES, runPlanner, runPlannerStream } from "@workspace/ai-orchestrator";
 import type { PlannerStreamEvent } from "@workspace/ai-orchestrator";
 import { providerManager } from "../../lib/provider-manager/index.js";
+import { completeWithG4F } from "../../lib/g4f-fallback.js";
 import type { TaskType } from "../../lib/provider-manager/types.js";
 import { generateId } from "../../lib/auth.js";
 import { authenticate } from "../../middlewares/authenticate.js";
@@ -733,14 +734,28 @@ router.post("/planner/stream", validateBody(plannerSchema), async (req, res) => 
             );
           }
         }
-        return providerManager.complete(typedMessages, {
-          taskType: opts.taskType as TaskType | undefined,
-          maxTokens: opts.maxTokens,
-          temperature: opts.temperature,
-          onRotationEvent: (evt) => {
-            if (!aborted) sendEvent({ ...evt, type: "provider_status" });
-          },
-        });
+        try {
+          return await providerManager.complete(typedMessages, {
+            taskType: opts.taskType as TaskType | undefined,
+            maxTokens: opts.maxTokens,
+            temperature: opts.temperature,
+            onRotationEvent: (evt) => {
+              if (!aborted) sendEvent({ ...evt, type: "provider_status" });
+            },
+          });
+        } catch (providerManagerError) {
+          // Explicit final attempt: do not let the generic planner error hide
+          // the no-key g4f fallback from the user.
+          console.warn(
+            "[Planner] ProviderManager exhausted; trying direct g4f final fallback:",
+            providerManagerError instanceof Error ? providerManagerError.message : String(providerManagerError),
+          );
+          return completeWithG4F(typedMessages, {
+            taskType: opts.taskType as TaskType | undefined,
+            maxTokens: opts.maxTokens,
+            temperature: opts.temperature,
+          });
+        }
       },
     );
 
